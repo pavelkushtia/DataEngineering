@@ -1,5 +1,18 @@
 # Apache Kafka Distributed Setup Guide
 
+## 📖 Architecture Guide
+
+**🎯 New to Kafka?** Read our comprehensive **[Kafka Architecture Guide](../architecture/kafka_architecture_guide.md)** first!
+
+This architecture guide explains:
+- How Kafka's distributed architecture works with YOUR exact setup
+- Message flow and partition distribution with detailed diagrams
+- ZooKeeper cluster coordination and broker management
+- How to scale from 3 to 5 or 7 nodes
+- Performance impact and fault tolerance analysis
+
+---
+
 ## Overview
 Apache Kafka will be set up as a distributed cluster across multiple nodes for high availability and scalability in the Data Engineering HomeLab.
 
@@ -46,11 +59,16 @@ source ~/.bashrc
 # Create kafka user
 sudo useradd -r -s /bin/false kafka
 
-# Download Kafka
+# Download Kafka (Current stable version)
 cd /opt
-sudo wget https://downloads.apache.org/kafka/2.8.2/kafka_2.13-2.8.2.tgz
-sudo tar -xzf kafka_2.13-2.8.2.tgz
-sudo mv kafka_2.13-2.8.2 kafka
+sudo wget https://downloads.apache.org/kafka/3.9.1/kafka_2.13-3.9.1.tgz
+sudo tar -xzf kafka_2.13-3.9.1.tgz
+sudo mv kafka_2.13-3.9.1 kafka
+
+# Note: If the above version is not available, check the latest version at:
+# https://kafka.apache.org/downloads
+# Alternative download command for any version:
+# sudo wget https://archive.apache.org/dist/kafka/[VERSION]/kafka_2.13-[VERSION].tgz
 sudo chown -R kafka:kafka /opt/kafka
 
 # Create data directories
@@ -62,19 +80,21 @@ sudo chown -R kafka:kafka /var/lib/zookeeper
 
 ## Step 3: ZooKeeper Configuration (All Nodes)
 
-### Create ZooKeeper configuration on cpu-node1:
+**The ZooKeeper configuration is IDENTICAL on all three nodes.** Create the same file on each:
+
+### On ALL nodes (cpu-node1, cpu-node2, worker-node3):
 ```bash
 sudo nano /opt/kafka/config/zookeeper.properties
 ```
 
 ```properties
-# cpu-node1 ZooKeeper configuration
+# ZooKeeper configuration (same on all nodes)
 dataDir=/var/lib/zookeeper
 clientPort=2181
 maxClientCnxns=0
 admin.enableServer=false
 
-# ZooKeeper cluster configuration
+# ZooKeeper cluster configuration (all nodes listed)
 initLimit=10
 syncLimit=5
 server.1=192.168.1.184:2888:3888
@@ -82,187 +102,92 @@ server.2=192.168.1.187:2888:3888
 server.3=192.168.1.190:2888:3888
 ```
 
-### Create ZooKeeper configuration on cpu-node2:
-```bash
-sudo nano /opt/kafka/config/zookeeper.properties
-```
+### Create unique ZooKeeper ID files (ONLY difference per node):
 
-```properties
-# cpu-node2 ZooKeeper configuration
-dataDir=/var/lib/zookeeper
-clientPort=2181
-maxClientCnxns=0
-admin.enableServer=false
-
-# ZooKeeper cluster configuration
-initLimit=10
-syncLimit=5
-server.1=192.168.1.184:2888:3888
-server.2=192.168.1.187:2888:3888
-server.3=192.168.1.190:2888:3888
-```
-
-### Create ZooKeeper configuration on worker-node3:
-```bash
-sudo nano /opt/kafka/config/zookeeper.properties
-```
-
-```properties
-# worker-node3 ZooKeeper configuration
-dataDir=/var/lib/zookeeper
-clientPort=2181
-maxClientCnxns=0
-admin.enableServer=false
-
-# ZooKeeper cluster configuration
-initLimit=10
-syncLimit=5
-server.1=192.168.1.184:2888:3888
-server.2=192.168.1.187:2888:3888
-server.3=192.168.1.190:2888:3888
-```
-
-### Create ZooKeeper ID files:
-
-**On cpu-node1:**
+**On cpu-node1 (192.168.1.184):**
 ```bash
 echo "1" | sudo tee /var/lib/zookeeper/myid
 ```
 
-**On cpu-node2:**
+**On cpu-node2 (192.168.1.187):**
 ```bash
 echo "2" | sudo tee /var/lib/zookeeper/myid
 ```
 
-**On worker-node3:**
+**On worker-node3 (192.168.1.190):**
 ```bash
 echo "3" | sudo tee /var/lib/zookeeper/myid
 ```
 
+💡 **Key Point**: The configuration file is identical across all nodes. Only the `myid` file differs (1, 2, 3).
+
 ## Step 4: Kafka Broker Configuration
 
-### Kafka configuration on cpu-node1:
+**Most of the Kafka configuration is IDENTICAL on all nodes.** Use this template on each node:
+
+### On ALL nodes, create the base configuration:
 ```bash
 sudo nano /opt/kafka/config/server.properties
 ```
 
+**Common configuration (same on all nodes):**
 ```properties
-# cpu-node1 Kafka Broker configuration
+# Basic Kafka configuration
+log.dirs=/var/lib/kafka/logs
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+
+# Log configuration
+num.partitions=3
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=3
+transaction.state.log.replication.factor=3
+transaction.state.log.min.isr=2
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+
+# ZooKeeper (same cluster connection for all brokers)
+zookeeper.connect=192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181
+zookeeper.connection.timeout.ms=18000
+
+# Group coordinator configuration
+group.initial.rebalance.delay.ms=0
+
+# Performance tuning
+replica.fetch.max.bytes=1048576
+message.max.bytes=1000012
+replica.socket.timeout.ms=30000
+replica.socket.receive.buffer.bytes=65536
+```
+
+### Node-specific settings (ONLY differences per node):
+
+**cpu-node1 (192.168.1.184) - ADD these lines:**
+```properties
 broker.id=1
 listeners=PLAINTEXT://192.168.1.184:9092
 advertised.listeners=PLAINTEXT://192.168.1.184:9092
-log.dirs=/var/lib/kafka/logs
-num.network.threads=3
-num.io.threads=8
-socket.send.buffer.bytes=102400
-socket.receive.buffer.bytes=102400
-socket.request.max.bytes=104857600
-
-# Log configuration
-num.partitions=3
-num.recovery.threads.per.data.dir=1
-offsets.topic.replication.factor=3
-transaction.state.log.replication.factor=3
-transaction.state.log.min.isr=2
-log.retention.hours=168
-log.segment.bytes=1073741824
-log.retention.check.interval.ms=300000
-
-# ZooKeeper
-zookeeper.connect=192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181
-zookeeper.connection.timeout.ms=18000
-
-# Group coordinator configuration
-group.initial.rebalance.delay.ms=0
-
-# Performance tuning
-replica.fetch.max.bytes=1048576
-message.max.bytes=1000012
-replica.socket.timeout.ms=30000
-replica.socket.receive.buffer.bytes=65536
 ```
 
-### Kafka configuration on cpu-node2:
-```bash
-sudo nano /opt/kafka/config/server.properties
-```
-
+**cpu-node2 (192.168.1.187) - ADD these lines:**
 ```properties
-# cpu-node2 Kafka Broker configuration
 broker.id=2
 listeners=PLAINTEXT://192.168.1.187:9092
 advertised.listeners=PLAINTEXT://192.168.1.187:9092
-log.dirs=/var/lib/kafka/logs
-num.network.threads=3
-num.io.threads=8
-socket.send.buffer.bytes=102400
-socket.receive.buffer.bytes=102400
-socket.request.max.bytes=104857600
-
-# Log configuration
-num.partitions=3
-num.recovery.threads.per.data.dir=1
-offsets.topic.replication.factor=3
-transaction.state.log.replication.factor=3
-transaction.state.log.min.isr=2
-log.retention.hours=168
-log.segment.bytes=1073741824
-log.retention.check.interval.ms=300000
-
-# ZooKeeper
-zookeeper.connect=192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181
-zookeeper.connection.timeout.ms=18000
-
-# Group coordinator configuration
-group.initial.rebalance.delay.ms=0
-
-# Performance tuning
-replica.fetch.max.bytes=1048576
-message.max.bytes=1000012
-replica.socket.timeout.ms=30000
-replica.socket.receive.buffer.bytes=65536
 ```
 
-### Kafka configuration on worker-node3:
-```bash
-sudo nano /opt/kafka/config/server.properties
-```
-
+**worker-node3 (192.168.1.190) - ADD these lines:**
 ```properties
-# worker-node3 Kafka Broker configuration
 broker.id=3
 listeners=PLAINTEXT://192.168.1.190:9092
 advertised.listeners=PLAINTEXT://192.168.1.190:9092
-log.dirs=/var/lib/kafka/logs
-num.network.threads=3
-num.io.threads=8
-socket.send.buffer.bytes=102400
-socket.receive.buffer.bytes=102400
-socket.request.max.bytes=104857600
-
-# Log configuration
-num.partitions=3
-num.recovery.threads.per.data.dir=1
-offsets.topic.replication.factor=3
-transaction.state.log.replication.factor=3
-transaction.state.log.min.isr=2
-log.retention.hours=168
-log.segment.bytes=1073741824
-log.retention.check.interval.ms=300000
-
-# ZooKeeper
-zookeeper.connect=192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181
-zookeeper.connection.timeout.ms=18000
-
-# Group coordinator configuration
-group.initial.rebalance.delay.ms=0
-
-# Performance tuning
-replica.fetch.max.bytes=1048576
-message.max.bytes=1000012
-replica.socket.timeout.ms=30000
-replica.socket.receive.buffer.bytes=65536
 ```
+
+💡 **Key Point**: Use the same common configuration + add the 3 node-specific lines for each broker.
 
 ## Step 5: Create Systemd Services (All Nodes)
 
@@ -488,11 +413,267 @@ sudo chown -R kafka:kafka kafka-manager
 sudo tar -czf zookeeper-backup-$(date +%Y%m%d).tar.gz /var/lib/zookeeper
 ```
 
+## Debezium PostgreSQL CDC Connector
+
+### 🔴 Install Debezium on PRIMARY BROKER (cpu-node1 / 192.168.1.184)
+
+**Step 1: Download and install Debezium PostgreSQL connector:**
+```bash
+# Create Kafka Connect plugins directory
+sudo mkdir -p /opt/kafka/plugins
+
+# Download Debezium PostgreSQL connector
+cd /tmp
+wget https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/2.4.2.Final/debezium-connector-postgres-2.4.2.Final-plugin.tar.gz
+
+# Extract to plugins directory
+sudo tar -xzf debezium-connector-postgres-2.4.2.Final-plugin.tar.gz -C /opt/kafka/plugins/
+
+# Set ownership
+sudo chown -R kafka:kafka /opt/kafka/plugins/
+```
+
+**Step 2: Configure Kafka Connect:**
+```bash
+# Create Connect configuration
+sudo nano /opt/kafka/config/connect-distributed.properties
+```
+
+Add/modify these settings:
+```properties
+# Kafka Connect distributed configuration
+bootstrap.servers=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
+group.id=connect-cluster
+
+# Converter settings for JSON
+key.converter=org.apache.kafka.connect.json.JsonConverter
+value.converter=org.apache.kafka.connect.json.JsonConverter
+key.converter.schemas.enable=false
+value.converter.schemas.enable=false
+
+# Internal topic settings
+offset.storage.topic=connect-offsets
+offset.storage.replication.factor=2
+config.storage.topic=connect-configs
+config.storage.replication.factor=2
+status.storage.topic=connect-status
+status.storage.replication.factor=2
+
+# Plugin path
+plugin.path=/opt/kafka/plugins
+
+# REST API settings
+rest.host.name=0.0.0.0
+rest.port=8083
+```
+
+**Step 3: Create Kafka Connect systemd service:**
+```bash
+# Create systemd service file
+sudo nano /etc/systemd/system/kafka-connect.service
+```
+
+```ini
+[Unit]
+Description=Apache Kafka Connect
+Documentation=https://kafka.apache.org/
+Requires=network.target remote-fs.target
+After=network.target remote-fs.target kafka.service
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+Environment=JAVA_HOME=/opt/jdk
+ExecStart=/opt/kafka/bin/connect-distributed.sh /opt/kafka/config/connect-distributed.properties
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Step 4: Start Kafka Connect:**
+```bash
+# Reload systemd and start Kafka Connect
+sudo systemctl daemon-reload
+sudo systemctl start kafka-connect
+sudo systemctl enable kafka-connect
+
+# Verify Kafka Connect is running
+sudo systemctl status kafka-connect
+curl -s localhost:8083/ | jq
+
+# Check available connector plugins
+curl -s localhost:8083/connector-plugins | jq
+```
+
+### 🔧 Configure Debezium PostgreSQL Connector
+
+**Step 1: Create connector configuration:**
+```bash
+# Create PostgreSQL connector configuration
+cat > /tmp/postgres-connector.json << 'EOF'
+{
+  "name": "postgres-debezium-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "192.168.1.184",
+    "database.port": "5432",
+    "database.user": "cdc_user",
+    "database.password": "cdc_password123",
+    "database.dbname": "analytics_db",
+    "database.server.name": "postgres-server",
+    "table.include.list": "public.*",
+    "publication.name": "debezium_publication",
+    "slot.name": "debezium_slot",
+    "topic.prefix": "postgres",
+    "schema.include.list": "public",
+    "plugin.name": "pgoutput",
+    "transforms": "route",
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": "([^.]+)\\.([^.]+)\\.([^.]+)",
+    "transforms.route.replacement": "cdc.$3"
+  }
+}
+EOF
+```
+
+**Step 2: Deploy the connector:**
+```bash
+# Deploy PostgreSQL CDC connector
+curl -X POST -H "Content-Type: application/json" --data @/tmp/postgres-connector.json localhost:8083/connectors
+
+# Check connector status
+curl -s localhost:8083/connectors/postgres-debezium-connector/status | jq
+
+# List all connectors
+curl -s localhost:8083/connectors | jq
+```
+
+### 📊 Test CDC Streaming
+
+**Step 1: Create test table in PostgreSQL:**
+```bash
+# Connect to PostgreSQL on primary
+psql -h 192.168.1.184 -U dataeng -d analytics_db
+
+# Create test table
+CREATE TABLE user_events (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    event_type VARCHAR(50),
+    event_data JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+# Insert test data
+INSERT INTO user_events (user_id, event_type, event_data) VALUES
+(1001, 'login', '{"ip": "192.168.1.100", "device": "mobile"}'),
+(1002, 'purchase', '{"product_id": 123, "amount": 99.99}'),
+(1003, 'logout', '{"session_duration": 1800}');
+
+-- Exit PostgreSQL
+\q
+```
+
+**Step 2: Verify CDC data in Kafka:**
+```bash
+# List Kafka topics (should see CDC topics)
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | grep cdc
+
+# Consume CDC messages from user_events topic
+/opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic cdc.user_events \
+  --from-beginning \
+  --property print.headers=true \
+  --property print.timestamp=true
+```
+
+**Step 3: Test real-time CDC:**
+```bash
+# In one terminal, start consuming CDC messages:
+/opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic cdc.user_events
+
+# In another terminal, insert more data:
+psql -h 192.168.1.184 -U dataeng -d analytics_db -c \
+"INSERT INTO user_events (user_id, event_type, event_data) VALUES (1004, 'signup', '{\"email\": \"test@example.com\"}');"
+
+# You should see the CDC message appear immediately in the consumer!
+```
+
+### 🔧 CDC Monitoring and Management
+
+**Monitor connector health:**
+```bash
+# Check connector status
+curl -s localhost:8083/connectors/postgres-debezium-connector/status | jq '.connector.state'
+
+# Check task status
+curl -s localhost:8083/connectors/postgres-debezium-connector/tasks/0/status | jq
+
+# View connector metrics
+curl -s localhost:8083/connectors/postgres-debezium-connector | jq
+```
+
+**Manage CDC connector:**
+```bash
+# Pause connector
+curl -X PUT localhost:8083/connectors/postgres-debezium-connector/pause
+
+# Resume connector
+curl -X PUT localhost:8083/connectors/postgres-debezium-connector/resume
+
+# Restart connector
+curl -X POST localhost:8083/connectors/postgres-debezium-connector/restart
+
+# Delete connector
+curl -X DELETE localhost:8083/connectors/postgres-debezium-connector
+```
+
+### 📈 Advanced CDC Configuration
+
+**High-availability CDC setup:**
+```json
+{
+  "name": "postgres-ha-cdc-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "2",
+    "database.hostname": "192.168.1.184",
+    "database.port": "5432",
+    "database.user": "cdc_user",
+    "database.password": "cdc_password123",
+    "database.dbname": "analytics_db",
+    "database.server.name": "postgres-ha-server",
+    "table.include.list": "public.user_events,public.orders,public.products",
+    "publication.name": "debezium_publication",
+    "slot.name": "debezium_ha_slot",
+    "topic.prefix": "postgres-ha",
+    "schema.include.list": "public",
+    "plugin.name": "pgoutput",
+    "snapshot.mode": "initial",
+    "decimal.handling.mode": "string",
+    "time.precision.mode": "adaptive",
+    "include.schema.changes": "true",
+    "message.key.columns": "public.user_events:id;public.orders:order_id",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false"
+  }
+}
+```
+
 ## Integration with Other Components
 
 - **Spark Integration**: Use Spark Streaming with Kafka for real-time processing
 - **Flink Integration**: Use Flink Kafka connectors for stream processing
-- **PostgreSQL Integration**: Use Debezium for CDC from PostgreSQL to Kafka
+- **PostgreSQL Integration**: ✅ **Debezium CDC configured above** - Real-time change data capture
 - **Schema Registry**: Consider Confluent Schema Registry for Avro/JSON schema management
 
 ## Troubleshooting

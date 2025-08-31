@@ -292,6 +292,9 @@ wget https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1
 wget https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.1-1.18/flink-connector-jdbc-3.1.1-1.18.jar
 wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar
 
+# PostgreSQL CDC connector (for real-time change data capture)
+wget https://repo1.maven.org/maven2/com/ververica/flink-connector-postgres-cdc/2.4.2/flink-connector-postgres-cdc-2.4.2.jar
+
 # Elasticsearch connector
 wget https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-elasticsearch7/3.0.1-1.18/flink-sql-connector-elasticsearch7-3.0.1-1.18.jar
 
@@ -601,6 +604,249 @@ env.addSource(kafkaSource)
    .addSink(postgresqlSink);
 
 env.execute("Kafka to PostgreSQL");
+```
+
+### PostgreSQL CDC Real-Time Streaming:
+
+**Step 1: SQL API - Create CDC Source Table:**
+```sql
+-- Connect to Flink SQL CLI
+./bin/sql-client.sh
+
+-- Create PostgreSQL CDC source table
+CREATE TABLE user_events_cdc (
+    id BIGINT,
+    user_id INT,
+    event_type STRING,
+    event_data STRING,
+    created_at TIMESTAMP(3),
+    PRIMARY KEY (id) NOT ENFORCED
+) WITH (
+    'connector' = 'postgres-cdc',
+    'hostname' = '192.168.1.184',
+    'port' = '5432',
+    'username' = 'cdc_user',
+    'password' = 'cdc_password123',
+    'database-name' = 'analytics_db',
+    'schema-name' = 'public',
+    'table-name' = 'user_events',
+    'slot.name' = 'flink_cdc_slot'
+);
+
+-- Create Kafka sink table for CDC events
+CREATE TABLE user_events_kafka (
+    id BIGINT,
+    user_id INT,
+    event_type STRING,
+    event_data STRING,
+    created_at TIMESTAMP(3)
+) WITH (
+    'connector' = 'kafka',
+    'topic' = 'flink-cdc-user-events',
+    'properties.bootstrap.servers' = '192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092',
+    'format' = 'json'
+);
+
+-- Stream CDC changes to Kafka
+INSERT INTO user_events_kafka 
+SELECT * FROM user_events_cdc;
+```
+
+**Step 2: Java API - PostgreSQL CDC to Analytics:**
+```java
+import com.ververica.cdc.connectors.postgres.PostgreSQLSource;
+import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
+
+public class PostgresCDCJob {
+    public static void main(String[] args) throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        
+        // Enable checkpointing for exactly-once processing
+        env.enableCheckpointing(5000);
+        
+        // PostgreSQL CDC Source
+        SourceFunction<String> postgresSource = PostgreSQLSource.<String>builder()
+            .hostname("192.168.1.184")
+            .port(5432)
+            .database("analytics_db")
+            .schemaList("public")
+            .tableList("public.user_events,public.orders")
+            .username("cdc_user")
+            .password("cdc_password123")
+            .slotName("flink_cdc_slot")
+            .deserializer(new JsonDebeziumDeserializationSchema())
+            .build();
+        
+        // Process CDC stream
+        DataStream<String> cdcStream = env.addSource(postgresSource)
+            .name("PostgreSQL CDC Source");
+            
+        // Parse and transform CDC events
+        DataStream<UserEvent> events = cdcStream
+            .map(new CDCEventParser())
+            .filter(event -> event.getOperation().equals("INSERT") || 
+                           event.getOperation().equals("UPDATE"));
+        
+        // Real-time aggregations
+        DataStream<UserEventStats> stats = events
+            .keyBy(UserEvent::getEventType)
+            .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
+            .aggregate(new UserEventAggregator());
+        
+        // Sink to analytics store
+        stats.addSink(JdbcSink.sink(
+            "INSERT INTO event_stats (event_type, count, window_start) VALUES (?, ?, ?)",
+            new UserEventStatsSinkFunction(),
+            JdbcExecutionOptions.builder()
+                .withBatchSize(100)
+                .withBatchIntervalMs(1000)
+                .build(),
+            new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
+                .withUrl("jdbc:postgresql://192.168.1.184:5432/analytics_db")
+                .withDriverName("org.postgresql.Driver")
+                .withUsername("dataeng")
+                .withPassword("dataeng_password")
+                .build()
+        ));
+        
+        env.execute("PostgreSQL CDC Analytics Job");
+    }
+}
+```
+
+**Step 3: CDC Event Processing Functions:**
+```java
+// CDC Event Parser
+public class CDCEventParser implements MapFunction<String, UserEvent> {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    @Override
+    public UserEvent map(String cdcJson) throws Exception {
+        JsonNode root = objectMapper.readTree(cdcJson);
+        JsonNode payload = root.get("payload");
+        
+        UserEvent event = new UserEvent();
+        event.setOperation(payload.get("op").asText());
+        
+        JsonNode after = payload.get("after");
+        if (after != null) {
+            event.setId(after.get("id").asLong());
+            event.setUserId(after.get("user_id").asInt());
+            event.setEventType(after.get("event_type").asText());
+            event.setEventData(after.get("event_data").asText());
+            event.setCreatedAt(Instant.ofEpochMilli(after.get("created_at").asLong()));
+        }
+        
+        return event;
+    }
+}
+
+// User Event Aggregator
+public class UserEventAggregator implements AggregateFunction<UserEvent, UserEventStats, UserEventStats> {
+    @Override
+    public UserEventStats createAccumulator() {
+        return new UserEventStats();
+    }
+    
+    @Override
+    public UserEventStats add(UserEvent event, UserEventStats accumulator) {
+        accumulator.setEventType(event.getEventType());
+        accumulator.setCount(accumulator.getCount() + 1);
+        accumulator.setWindowStart(Instant.now());
+        return accumulator;
+    }
+    
+    @Override
+    public UserEventStats getResult(UserEventStats accumulator) {
+        return accumulator;
+    }
+    
+    @Override
+    public UserEventStats merge(UserEventStats a, UserEventStats b) {
+        UserEventStats result = new UserEventStats();
+        result.setEventType(a.getEventType());
+        result.setCount(a.getCount() + b.getCount());
+        result.setWindowStart(a.getWindowStart());
+        return result;
+    }
+}
+```
+
+**Step 4: Test CDC Streaming:**
+```bash
+# Submit CDC job
+./bin/flink run \
+  --class PostgresCDCJob \
+  --jobmanager 192.168.1.184:8081 \
+  /path/to/postgres-cdc-job.jar
+
+# Test by inserting data in PostgreSQL
+psql -h 192.168.1.184 -U dataeng -d analytics_db -c \
+"INSERT INTO user_events (user_id, event_type, event_data) VALUES (2001, 'page_view', '{\"page\": \"/dashboard\", \"duration\": 120}');"
+
+# Check Flink UI for job status: http://192.168.1.184:8081
+# Check output in analytics tables or Kafka topics
+```
+
+**Step 5: Advanced CDC Configuration:**
+```sql
+-- Multiple table CDC with pattern matching
+CREATE TABLE all_events_cdc (
+    table_name STRING METADATA FROM 'table_name' VIRTUAL,
+    id BIGINT,
+    data ROW<user_id INT, event_type STRING, created_at TIMESTAMP(3)>,
+    PRIMARY KEY (id) NOT ENFORCED
+) WITH (
+    'connector' = 'postgres-cdc',
+    'hostname' = '192.168.1.184',
+    'port' = '5432',
+    'username' = 'cdc_user',
+    'password' = 'cdc_password123',
+    'database-name' = 'analytics_db',
+    'schema-name' = 'public',
+    'table-name' = 'user_events|orders|products',  -- Multiple tables
+    'slot.name' = 'flink_multi_cdc_slot',
+    'debezium.snapshot.mode' = 'initial'  -- Include existing data
+);
+
+-- Route different tables to different topics
+CREATE TABLE events_by_table AS
+SELECT 
+    table_name,
+    id,
+    data,
+    CASE 
+        WHEN table_name = 'user_events' THEN 'events'
+        WHEN table_name = 'orders' THEN 'orders'  
+        WHEN table_name = 'products' THEN 'products'
+    END as topic_suffix
+FROM all_events_cdc;
+```
+
+### 🔧 CDC Monitoring and Troubleshooting:
+
+**Monitor CDC lag:**
+```sql
+-- In PostgreSQL, check replication slots
+SELECT slot_name, plugin, slot_type, database, active, 
+       pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) as lag_bytes
+FROM pg_replication_slots 
+WHERE slot_name LIKE 'flink%';
+
+-- Check if slot is active
+SELECT * FROM pg_stat_replication WHERE application_name LIKE 'flink%';
+```
+
+**Flink CDC job monitoring:**
+```bash
+# Check job status
+curl -s http://192.168.1.184:8081/jobs | jq '.jobs[] | select(.name | contains("CDC"))'
+
+# Monitor CDC source metrics  
+curl -s "http://192.168.1.184:8081/jobs/{job-id}/metrics?get=Source__PostgreSQL_CDC.numRecordsOut"
+
+# Check for CDC errors in logs
+grep -i "cdc\|postgres" /home/flink/flink/log/flink-flink-taskmanager-*.log
 ```
 
 ## Monitoring and Logging

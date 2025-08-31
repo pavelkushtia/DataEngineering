@@ -557,6 +557,118 @@ When you run `SELECT create_hypertable('sensor_data', 'time')`:
 
 This is why TimescaleDB is so powerful for analytics and monitoring workloads - you get PostgreSQL's reliability with time-series superpowers! 🚀
 
+## Change Data Capture (CDC) Setup
+
+### 🔴 Configure CDC on PRIMARY SERVER (cpu-node1 / 192.168.1.184)
+
+For real-time data streaming to Kafka (Debezium) and Flink CDC, enable logical replication:
+
+**Step 1: Enable logical replication:**
+```bash
+# Edit PostgreSQL configuration
+sudo nano /etc/postgresql/16/main/postgresql.conf
+
+# Add/modify these settings:
+wal_level = logical                    # Enable logical replication
+max_replication_slots = 4              # Allow CDC connections
+max_wal_senders = 4                    # Increased for CDC
+```
+
+**Step 2: Configure client authentication for CDC:**
+```bash
+# Edit pg_hba.conf
+sudo nano /etc/postgresql/16/main/pg_hba.conf
+
+# Add CDC user access (add after existing replication line):
+host    replication     cdc_user        192.168.1.0/24          md5
+host    all             cdc_user        192.168.1.0/24          md5
+```
+
+**Step 3: Create CDC user and configure database:**
+```bash
+# Connect to PostgreSQL
+sudo -u postgres psql
+
+# Create CDC user
+CREATE USER cdc_user WITH REPLICATION LOGIN PASSWORD 'cdc_password123';
+
+# Connect to analytics_db
+\c analytics_db
+
+# Grant necessary permissions for CDC
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO cdc_user;
+GRANT USAGE ON SCHEMA public TO cdc_user;
+
+-- Create publication for all tables (for Debezium)
+CREATE PUBLICATION debezium_publication FOR ALL TABLES;
+
+-- Enable row-level security bypass for CDC user (if needed)
+ALTER USER cdc_user WITH BYPASSRLS;
+
+-- Exit PostgreSQL
+\q
+```
+
+**Step 4: Restart PostgreSQL to apply changes:**
+```bash
+# Restart PostgreSQL
+sudo systemctl restart postgresql
+
+# Verify logical replication is enabled
+sudo -u postgres psql -c "SHOW wal_level;"
+# Should show: logical
+```
+
+**Step 5: Test CDC connectivity:**
+```bash
+# Test CDC user connection
+psql -h 192.168.1.184 -U cdc_user -d analytics_db -c "SELECT version();"
+
+# Test replication slot creation (for verification)
+sudo -u postgres psql -d analytics_db -c "SELECT * FROM pg_create_logical_replication_slot('test_slot', 'pgoutput');"
+
+# Clean up test slot
+sudo -u postgres psql -d analytics_db -c "SELECT pg_drop_replication_slot('test_slot');"
+```
+
+### 🔵 CDC Configuration on REPLICA SERVER (cpu-node2 / 192.168.1.187)
+
+**Important:** Update replica configuration to match primary:
+
+```bash
+# SSH to replica server
+ssh sanzad@192.168.1.187
+
+# Edit PostgreSQL configuration to match primary
+sudo nano /etc/postgresql/16/main/postgresql.conf
+
+# Update these settings to match primary:
+wal_level = logical                    # Must match primary
+max_replication_slots = 4              # Must match primary
+max_wal_senders = 4                    # Must match primary
+
+# Restart PostgreSQL
+sudo systemctl restart postgresql
+
+# Exit SSH
+exit
+```
+
+### 📊 CDC Monitoring Queries:
+
+**Monitor replication slots (run on PRIMARY):**
+```sql
+-- View active replication slots
+SELECT slot_name, plugin, slot_type, database, active 
+FROM pg_replication_slots;
+
+-- Monitor CDC lag
+SELECT slot_name, 
+       pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) as lag_bytes
+FROM pg_replication_slots 
+WHERE slot_type = 'logical';
+```
+
 ## Testing the Setup
 
 ### 🔴 On PRIMARY SERVER (cpu-node1 / 192.168.1.184):

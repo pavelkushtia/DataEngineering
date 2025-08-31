@@ -51,6 +51,14 @@ This project provides a complete data engineering ecosystem deployed across mult
 - **Data Formats**: Parquet, Avro, JSON, Graph formats
 - **Orchestration**: Built-in schedulers + custom workflows
 
+## 🏗️ Architecture Guides
+
+For in-depth understanding of distributed system architectures:
+
+- **[Kafka Architecture Guide](architecture/kafka_architecture_guide.md)** - Comprehensive guide to your 3-node Kafka setup with scaling strategies
+
+---
+
 ## 📚 Setup Guides
 
 ### Core Components Setup
