@@ -631,6 +631,28 @@ sudo -u postgres psql -d analytics_db -c "SELECT * FROM pg_create_logical_replic
 sudo -u postgres psql -d analytics_db -c "SELECT pg_drop_replication_slot('test_slot');"
 ```
 
+### 🔄 **If you already have streaming replication set up:**
+
+**To enable CDC on existing PostgreSQL setup:**
+```bash
+# Edit configuration to upgrade from replica to logical WAL level
+sudo nano /etc/postgresql/16/main/postgresql.conf
+
+# Change these settings (safe upgrade - includes all replica functionality):
+wal_level = logical                    # Upgrade from 'replica' to 'logical' 
+max_wal_senders = 4                    # Increase for CDC + streaming replication
+max_replication_slots = 4              # Add for CDC support
+
+# Restart PostgreSQL (streaming replication will continue working)
+sudo systemctl restart postgresql
+
+# Verify upgrade successful
+sudo -u postgres psql -c "SHOW wal_level;"
+# Should show: logical
+```
+
+**⚠️ Note:** `wal_level = logical` is a **superset** of `replica` - your existing streaming replication will continue working perfectly while gaining CDC capabilities.
+
 ### 🔵 CDC Configuration on REPLICA SERVER (cpu-node2 / 192.168.1.187)
 
 **Important:** Update replica configuration to match primary:

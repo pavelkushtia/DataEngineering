@@ -335,8 +335,11 @@ config.storage.replication.factor=3
 status.storage.topic=connect-status
 status.storage.replication.factor=3
 offset.flush.interval.ms=10000
-rest.host.name=192.168.1.184
+# REST API settings - bind to all interfaces but advertise specific IP
+rest.host.name=0.0.0.0
 rest.port=8083
+rest.advertised.host.name=192.168.1.184
+rest.advertised.port=8083
 ```
 
 ## Performance Tuning
@@ -368,33 +371,426 @@ sudo sysctl -p
 
 ## Monitoring
 
-### Useful monitoring commands:
+### 📋 Quick Reference - Where to Run Monitoring Commands:
+
+| Command Type | Where to Run | Example |
+|--------------|-------------|---------|
+| **Cluster-wide commands** | Any node | Consumer lag, topic management |
+| **Node-specific logs** | Each specific node | `tail -f /opt/kafka/logs/server.log` |
+| **ZooKeeper status** | Any node (local or remote) | `echo "ruok" \| nc <IP> 2181` |
+| **Kafka Connect** | cpu-node1 only | `curl localhost:8083/connectors` |
+| **Health check script** | Any node or external machine | Comprehensive cluster status |
+
+**🚨 Important:** Use the node's IP address, **NOT localhost**:
+- **cpu-node1**: Use `192.168.1.184:9092`
+- **cpu-node2**: Use `192.168.1.187:9092`
+- **worker-node3**: Use `192.168.1.190:9092`
+
+### 📊 Cluster-wide monitoring (run from ANY node):
 ```bash
-# Check cluster metadata
-/opt/kafka/bin/kafka-metadata-shell.sh --snapshot /var/lib/kafka/logs/__cluster_metadata-0/00000000000000000000.log
+# Monitor consumer lag across all brokers
+/opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 \
+  --describe --all-groups
 
-# Monitor consumer lag
-/opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server 192.168.1.184:9092 --describe --all-groups
+# List all topics in cluster
+/opt/kafka/bin/kafka-topics.sh --list \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
 
-# Check broker logs
-tail -f /opt/kafka/logs/server.log
+# Check topic details and partition distribution
+/opt/kafka/bin/kafka-topics.sh --describe \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
 
-# ZooKeeper status
-echo "ruok" | nc 192.168.1.184 2181
+# Check broker configurations
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server 192.168.1.184:9092 \
+  --entity-type brokers --describe
 ```
 
-### Kafka Manager (Optional UI):
+### 🖥️ Node-specific monitoring (run on each node):
+
+**On cpu-node1 (192.168.1.184):**
 ```bash
-# Install Kafka Manager on cpu-node1
+# Check local broker logs
+tail -f /opt/kafka/logs/server.log
+
+# Check local ZooKeeper logs  
+tail -f /opt/kafka/logs/zookeeper.out
+
+# Check broker metadata (ZooKeeper mode) - use node's IP, not localhost
+/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 192.168.1.184:9092
+
+# List log directories and segments
+ls -la /var/lib/kafka/logs/
+
+# Check specific topic log segments (example)
+ls -la /var/lib/kafka/logs/test-topic-*/ 2>/dev/null || echo "No test-topic found"
+
+# Local ZooKeeper status
+echo "ruok" | nc localhost 2181
+# or: echo "ruok" | nc 192.168.1.184 2181
+
+# Check Kafka Connect status (if running Connect on this node)
+curl -s localhost:8083/connectors | jq
+systemctl status kafka-connect
+```
+
+**On cpu-node2 (192.168.1.187):**
+```bash
+# Check local broker logs
+tail -f /opt/kafka/logs/server.log
+
+# Check local ZooKeeper logs
+tail -f /opt/kafka/logs/zookeeper.out
+
+# Check broker metadata for THIS node
+/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 192.168.1.187:9092
+
+# Local ZooKeeper status  
+echo "ruok" | nc localhost 2181
+# or: echo "ruok" | nc 192.168.1.187 2181
+```
+
+**On worker-node3 (192.168.1.190):**
+```bash
+# Check local broker logs
+tail -f /opt/kafka/logs/server.log
+
+# Check local ZooKeeper logs
+tail -f /opt/kafka/logs/zookeeper.out
+
+# Check broker metadata for THIS node
+/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 192.168.1.190:9092
+
+# Local ZooKeeper status
+echo "ruok" | nc localhost 2181  
+# or: echo "ruok" | nc 192.168.1.190 2181
+```
+
+### 🌐 Remote monitoring (run from external machine or any node):
+```bash
+# Check ZooKeeper cluster health from any node
+echo "ruok" | nc 192.168.1.184 2181  # Should return "imok"
+echo "ruok" | nc 192.168.1.187 2181  # Should return "imok"
+echo "ruok" | nc 192.168.1.190 2181  # Should return "imok"
+
+# Get ZooKeeper cluster status
+echo "stat" | nc 192.168.1.184 2181
+
+# Check if Kafka brokers are reachable
+nc -zv 192.168.1.184 9092
+nc -zv 192.168.1.187 9092  
+nc -zv 192.168.1.190 9092
+
+# Test Kafka Connect REST API (if running on cpu-node1)
+curl -s 192.168.1.184:8083/ | jq
+```
+
+### 🔍 ZooKeeper Cluster Metadata (run from any node):
+```bash
+# Check ZooKeeper cluster members
+echo "conf" | nc 192.168.1.184 2181
+
+# List brokers registered in ZooKeeper
+/opt/kafka/bin/kafka-broker-api-versions.sh \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
+
+# Check ZooKeeper broker registration
+/opt/kafka/bin/zookeeper-shell.sh 192.168.1.184:2181 <<< "ls /brokers/ids"
+
+# Check topic metadata in ZooKeeper  
+/opt/kafka/bin/zookeeper-shell.sh 192.168.1.184:2181 <<< "ls /brokers/topics"
+
+# Check controller information
+/opt/kafka/bin/zookeeper-shell.sh 192.168.1.184:2181 <<< "get /controller"
+
+# Verify cluster ID
+/opt/kafka/bin/zookeeper-shell.sh 192.168.1.184:2181 <<< "get /cluster/id"
+```
+
+### 📈 Continuous monitoring script (run from monitoring node):
+```bash
+# Create monitoring script
+cat > /tmp/kafka-health-check.sh << 'EOF'
+#!/bin/bash
+echo "=== Kafka Cluster Health Check $(date) ==="
+
+echo "## ZooKeeper Status:"
+for host in 192.168.1.184 192.168.1.187 192.168.1.190; do
+  echo -n "$host:2181 - "
+  echo "ruok" | nc -w 2 $host 2181 || echo "DOWN"
+done
+
+echo -e "\n## Kafka Broker Status:" 
+for host in 192.168.1.184 192.168.1.187 192.168.1.190; do
+  echo -n "$host:9092 - "
+  nc -zv -w 2 $host 9092 2>&1 | grep -q "succeeded" && echo "UP" || echo "DOWN"
+done
+
+echo -e "\n## Topic Count:"
+/opt/kafka/bin/kafka-topics.sh --list \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 \
+  | wc -l
+
+echo -e "\n## Consumer Group Lag:"
+/opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 \
+  --describe --all-groups | grep -E "GROUP|LAG"
+
+echo -e "\n## Kafka Connect Status (if available):"
+curl -s -w "%{http_code}" 192.168.1.184:8083/ -o /dev/null || echo "Connect not available"
+
+echo -e "\n=========================="
+EOF
+
+chmod +x /tmp/kafka-health-check.sh
+/tmp/kafka-health-check.sh
+```
+
+## Kafka Web UI (Optional but Recommended)
+
+### 🌟 **Recommended for Java 17+: Modern Kafka UI** (Requires Java 17+)
+
+**⚠️ Java Version Requirement:** Kafka UI v0.4.0+ requires **Java 13+**, v0.7.1+ requires **Java 17+**
+
+### 🎯 **Recommended for Java 11: Kafdrop** (Works with Java 8+)
+
+**✅ Install Kafdrop on cpu-node1:**
+```bash
+# Download Kafdrop (Java 11 compatible)
+cd /opt
+sudo wget https://github.com/obsidiandynamics/kafdrop/releases/download/3.31.0/kafdrop-3.31.0.jar
+sudo chown kafka:kafka kafdrop-3.31.0.jar
+
+# Create Kafdrop service
+sudo tee /etc/systemd/system/kafdrop.service << EOF
+[Unit]
+Description=Kafdrop Kafka UI
+After=network.target kafka.service
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ExecStart=/usr/bin/java -jar /opt/kafdrop-3.31.0.jar --kafka.brokerConnect=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --server.port=9001
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start Kafdrop
+sudo systemctl daemon-reload
+sudo systemctl start kafdrop
+sudo systemctl enable kafdrop
+
+# Open firewall
+sudo ufw allow 9001/tcp
+
+# Verify it's running
+sudo systemctl status kafdrop
+
+echo "✅ Kafdrop available at: http://192.168.1.184:9001"
+```
+
+### 💎 **Alternative for Java 17+: Modern Kafka UI**
+
+**Install Kafka UI on cpu-node1 (requires Java 17+):**
+```bash
+# Download Java 11-compatible Kafka UI (modern, lightweight)
+cd /opt
+sudo wget https://github.com/provectus/kafka-ui/releases/download/v0.4.0/kafka-ui-api-v0.4.0.jar
+sudo chown kafka:kafka kafka-ui-api-v0.4.0.jar
+
+# Create configuration
+sudo tee /opt/kafka-ui-config.yml << EOF
+kafka:
+  clusters:
+    - name: HomeLab-Kafka-Cluster
+      bootstrapServers: 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
+      zookeeper: 192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181
+
+server:
+  port: 8080
+  
+spring:
+  jmx:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+EOF
+
+# Create systemd service
+sudo tee /etc/systemd/system/kafka-ui.service << EOF
+[Unit]
+Description=Kafka UI
+Documentation=https://github.com/provectus/kafka-ui
+Requires=network.target remote-fs.target
+After=network.target remote-fs.target kafka.service
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ExecStart=/usr/bin/java -jar /opt/kafka-ui-api-v0.4.0.jar --spring.config.location=/opt/kafka-ui-config.yml
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start Kafka UI
+sudo systemctl daemon-reload
+sudo systemctl start kafka-ui
+sudo systemctl enable kafka-ui
+sudo systemctl status kafka-ui
+
+# Open firewall for web access
+sudo ufw allow 8080/tcp
+
+echo "✅ Kafka UI available at: http://192.168.1.184:8080"
+```
+
+**📝 Note:** Using v0.4.0 for Java 11 compatibility. If you have Java 17+, you can use v0.7.1+ for more features.
+
+### 🔧 **Alternative: CMAK (Classic Kafka Manager)**
+
+**If you prefer the classic Yahoo Kafka Manager:**
+```bash
+# Install CMAK on cpu-node1
 cd /opt
 sudo wget https://github.com/yahoo/CMAK/releases/download/3.0.0.5/cmak-3.0.0.5.zip
 sudo unzip cmak-3.0.0.5.zip
-sudo mv cmak-3.0.0.5 kafka-manager
-sudo chown -R kafka:kafka kafka-manager
+sudo mv cmak-3.0.0.5 cmak
+sudo chown -R kafka:kafka cmak
 
-# Configure and start
-# Edit application.conf to point to your ZooKeeper cluster
+# Configure CMAK
+sudo tee /opt/cmak/conf/application.conf << EOF
+# ZooKeeper configuration
+kafka-manager.zkhosts="192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181"
+
+# Application settings
+play.http.context="/kafka-manager"
+play.application.loader=loader.KafkaManagerLoader
+kafka-manager.consumer.properties.file=/opt/cmak/conf/consumer.properties
+
+# Security (basic auth)
+basicAuthentication.enabled=false
+
+# JMX settings
+kafka-manager.broker-view-thread-pool-size=10
+kafka-manager.broker-view-max-queue-size=1000
+kafka-manager.broker-view-update-seconds=30
+
+# Consumer offset settings
+kafka-manager.offset-cache-thread-pool-size=10
+kafka-manager.offset-cache-max-queue-size=1000
+
+# Logback configuration
+logger.kafka-manager=INFO
+logger.application=INFO
+EOF
+
+# Create CMAK service
+sudo tee /etc/systemd/system/cmak.service << EOF
+[Unit]
+Description=Kafka Manager (CMAK)
+After=network.target kafka.service
+
+[Service]
+Type=forking
+User=kafka
+Group=kafka
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ExecStart=/opt/cmak/bin/cmak -Dconfig.file=/opt/cmak/conf/application.conf -Dhttp.port=9000 &
+ExecStop=/bin/kill \$MAINPID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start CMAK
+sudo systemctl daemon-reload
+sudo systemctl start cmak
+sudo systemctl enable cmak
+
+# Open firewall
+sudo ufw allow 9000/tcp
+
+echo "✅ CMAK available at: http://192.168.1.184:9000"
 ```
+
+### 🚀 **Alternative: Kafdrop (Lightweight)**
+
+**For a simple, lightweight option:**
+```bash
+# Install Kafdrop on cpu-node1
+cd /opt
+sudo wget https://github.com/obsidiandynamics/kafdrop/releases/download/3.31.0/kafdrop-3.31.0.jar
+sudo chown kafka:kafka kafdrop-3.31.0.jar
+
+# Create Kafdrop service
+sudo tee /etc/systemd/system/kafdrop.service << EOF
+[Unit]
+Description=Kafdrop Kafka UI
+After=network.target kafka.service
+
+[Service]
+Type=simple
+User=kafka
+Group=kafka
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ExecStart=/usr/bin/java -jar /opt/kafdrop-3.31.0.jar --kafka.brokerConnect=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --server.port=9001
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start Kafdrop
+sudo systemctl daemon-reload
+sudo systemctl start kafdrop
+sudo systemctl enable kafdrop
+
+# Open firewall
+sudo ufw allow 9001/tcp
+
+echo "✅ Kafdrop available at: http://192.168.1.184:9001"
+```
+
+### 📊 **UI Comparison & Recommendation:**
+
+| Feature | **Kafka UI** ⭐ | CMAK | Kafdrop |
+|---------|-----------------|------|---------|
+| **Ease of Setup** | ✅ Very Easy | ❌ Complex | ✅ Easy |
+| **Modern UI** | ✅ Beautiful | ❌ Dated | ✅ Clean |
+| **Active Development** | ✅ Active | ❌ Legacy | ✅ Active |
+| **Topic Management** | ✅ Full | ✅ Full | ✅ Basic |
+| **Consumer Groups** | ✅ Advanced | ✅ Advanced | ✅ Basic |
+| **Schema Registry** | ✅ Yes | ❌ No | ❌ No |
+| **Connect Management** | ✅ Yes | ❌ No | ❌ No |
+| **Resource Usage** | ✅ Light | ❌ Heavy | ✅ Very Light |
+
+**🎯 Recommendation:** 
+- **Java 11**: Use **Kafdrop** ⭐ (works perfectly with your setup)
+- **Java 17+**: Use **Kafka UI** (more features but requires newer Java)
+
+### 🔥 **Quick Access Summary:**
+
+After setup, access your Kafka cluster via:
+- **Kafdrop**: `http://192.168.1.184:9001` ⭐ **Recommended for Java 11**
+- **Kafka UI**: `http://192.168.1.184:8080` (Requires Java 17+)
+- **CMAK**: `http://192.168.1.184:9000` (Classic)
 
 ## High Availability Considerations
 
@@ -402,6 +798,27 @@ sudo chown -R kafka:kafka kafka-manager
 2. **Min In-Sync Replicas**: Set `min.insync.replicas=2` for critical topics
 3. **Acks Configuration**: Use `acks=all` for producers requiring durability
 4. **Unclean Leader Election**: Set `unclean.leader.election.enable=false`
+
+### 📋 **Replication Factor Best Practices for Your 3-Broker Cluster:**
+
+**Always Use RF=3 for:**
+- ✅ **User topics** (your application data)
+- ✅ **Kafka Connect internal topics** (`connect-offsets`, `connect-configs`, `connect-status`)
+- ✅ **Consumer offset topics** (automatically RF=3)
+
+**Why RF=3 in 3-broker clusters:**
+```
+┌─────────────────┬─────────────┬─────────────────┬─────────────────┐
+│ Replication     │ Fault       │ Brokers         │ Recommendation  │
+│ Factor          │ Tolerance   │ Required        │                 │
+├─────────────────┼─────────────┼─────────────────┼─────────────────┤
+│ RF = 1          │ 0 failures  │ 1 broker        │ ❌ Never use    │
+│ RF = 2          │ 1 failure   │ 2 brokers       │ ❌ Poor choice  │
+│ RF = 3          │ 2 failures  │ 3 brokers       │ ✅ Perfect fit  │
+└─────────────────┴─────────────┴─────────────────┴─────────────────┘
+```
+
+**Key Point:** With RF=3, you can lose **any 2 brokers** and still have all your data!
 
 ## Backup and Recovery
 
@@ -415,9 +832,67 @@ sudo tar -czf zookeeper-backup-$(date +%Y%m%d).tar.gz /var/lib/zookeeper
 
 ## Debezium PostgreSQL CDC Connector
 
+### 🚨 **PREREQUISITE: Configure PostgreSQL for CDC (MUST BE DONE FIRST)**
+
+**Step 0: Enable logical replication in PostgreSQL**
+
+**🔥 Important:** PostgreSQL must be configured for **logical replication** to support CDC. This is different from streaming replication.
+
+```bash
+# Edit PostgreSQL configuration
+sudo nano /etc/postgresql/16/main/postgresql.conf
+
+# Update these settings (logical includes everything replica does):
+wal_level = logical                    # Change from 'replica' to 'logical' 
+max_replication_slots = 4              # Add if missing
+max_wal_senders = 4                    # Should already exist
+
+# Restart PostgreSQL to apply changes
+sudo systemctl restart postgresql
+
+# Verify logical replication is enabled
+sudo -u postgres psql -c "SHOW wal_level;"
+# Must show: logical (not replica)
+```
+
+**✅ Don't worry:** Changing to `logical` **will NOT break** your existing streaming replication - it's a superset that includes everything `replica` does plus CDC capabilities.
+
+**Step 1: Create CDC Database User**
+
+```bash
+# Connect to PostgreSQL as superuser
+sudo -u postgres psql
+
+# Create CDC user with replication privileges
+CREATE USER cdc_user WITH REPLICATION LOGIN PASSWORD 'cdc_password123';
+
+# Connect to analytics_db 
+\c analytics_db
+
+# Grant necessary permissions for CDC
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO cdc_user;
+GRANT USAGE ON SCHEMA public TO cdc_user;
+ALTER USER cdc_user WITH BYPASSRLS;
+
+-- Create publication for Debezium
+CREATE PUBLICATION debezium_publication FOR ALL TABLES;
+
+-- Verify user was created
+\du cdc_user
+
+-- Exit PostgreSQL
+\q
+
+# Test CDC user connection
+psql -h 192.168.1.184 -U cdc_user -d analytics_db -c "SELECT current_user, current_database();"
+# Password: cdc_password123
+```
+
+---
+
 ### 🔴 Install Debezium on PRIMARY BROKER (cpu-node1 / 192.168.1.184)
 
-**Step 1: Download and install Debezium PostgreSQL connector:**
+**Step 2: Download and install Debezium PostgreSQL connector:**
 ```bash
 # Create Kafka Connect plugins directory
 sudo mkdir -p /opt/kafka/plugins
@@ -433,11 +908,13 @@ sudo tar -xzf debezium-connector-postgres-2.4.2.Final-plugin.tar.gz -C /opt/kafk
 sudo chown -R kafka:kafka /opt/kafka/plugins/
 ```
 
-**Step 2: Configure Kafka Connect:**
+**Step 3: Configure Kafka Connect:**
 ```bash
 # Create Connect configuration
 sudo nano /opt/kafka/config/connect-distributed.properties
 ```
+
+**🔥 Important:** Always use **replication factor = 3** in a 3-broker cluster for maximum fault tolerance.
 
 Add/modify these settings:
 ```properties
@@ -451,27 +928,31 @@ value.converter=org.apache.kafka.connect.json.JsonConverter
 key.converter.schemas.enable=false
 value.converter.schemas.enable=false
 
-# Internal topic settings
+# Internal topic settings (use RF=3 for 3-broker cluster)
 offset.storage.topic=connect-offsets
-offset.storage.replication.factor=2
+offset.storage.replication.factor=3
 config.storage.topic=connect-configs
-config.storage.replication.factor=2
+config.storage.replication.factor=3
 status.storage.topic=connect-status
-status.storage.replication.factor=2
+status.storage.replication.factor=3
 
 # Plugin path
 plugin.path=/opt/kafka/plugins
 
-# REST API settings
+# REST API settings - bind to all interfaces but advertise specific IP
 rest.host.name=0.0.0.0
 rest.port=8083
+rest.advertised.host.name=192.168.1.184
+rest.advertised.port=8083
 ```
 
-**Step 3: Create Kafka Connect systemd service:**
+**Step 4: Create Kafka Connect systemd service:**
 ```bash
 # Create systemd service file
 sudo nano /etc/systemd/system/kafka-connect.service
 ```
+
+**🚨 Important:** Make sure `JAVA_HOME` points to your actual Java installation path!
 
 ```ini
 [Unit]
@@ -484,7 +965,7 @@ After=network.target remote-fs.target kafka.service
 Type=simple
 User=kafka
 Group=kafka
-Environment=JAVA_HOME=/opt/jdk
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ExecStart=/opt/kafka/bin/connect-distributed.sh /opt/kafka/config/connect-distributed.properties
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=on-failure
@@ -494,7 +975,7 @@ RestartSec=10s
 WantedBy=multi-user.target
 ```
 
-**Step 4: Start Kafka Connect:**
+**Step 5: Start Kafka Connect:**
 ```bash
 # Reload systemd and start Kafka Connect
 sudo systemctl daemon-reload
@@ -503,10 +984,18 @@ sudo systemctl enable kafka-connect
 
 # Verify Kafka Connect is running
 sudo systemctl status kafka-connect
-curl -s localhost:8083/ | jq
+
+# Test REST API locally (should work)
+curl -s 192.168.1.184:8083/ | jq
+
+# Test REST API via advertised address (should also work)
+curl -s 192.168.1.184:8083/ | jq
+
+# Test from other nodes in cluster (should work)
+# From cpu-node2 or worker-node3: curl -s 192.168.1.184:8083/ | jq
 
 # Check available connector plugins
-curl -s localhost:8083/connector-plugins | jq
+curl -s 192.168.1.184:8083/connector-plugins | jq
 ```
 
 ### 🔧 Configure Debezium PostgreSQL Connector
@@ -544,13 +1033,13 @@ EOF
 **Step 2: Deploy the connector:**
 ```bash
 # Deploy PostgreSQL CDC connector
-curl -X POST -H "Content-Type: application/json" --data @/tmp/postgres-connector.json localhost:8083/connectors
+curl -X POST -H "Content-Type: application/json" --data @/tmp/postgres-connector.json 192.168.1.184:8083/connectors
 
 # Check connector status
-curl -s localhost:8083/connectors/postgres-debezium-connector/status | jq
+curl -s 192.168.1.184:8083/connectors/postgres-debezium-connector/status | jq
 
 # List all connectors
-curl -s localhost:8083/connectors | jq
+curl -s 192.168.1.184:8083/connectors | jq
 ```
 
 ### 📊 Test CDC Streaming
@@ -582,11 +1071,11 @@ INSERT INTO user_events (user_id, event_type, event_data) VALUES
 **Step 2: Verify CDC data in Kafka:**
 ```bash
 # List Kafka topics (should see CDC topics)
-/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | grep cdc
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --list | grep cdc
 
 # Consume CDC messages from user_events topic
 /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 \
   --topic cdc.user_events \
   --from-beginning \
   --property print.headers=true \
@@ -597,7 +1086,7 @@ INSERT INTO user_events (user_id, event_type, event_data) VALUES
 ```bash
 # In one terminal, start consuming CDC messages:
 /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 \
   --topic cdc.user_events
 
 # In another terminal, insert more data:
@@ -612,36 +1101,54 @@ psql -h 192.168.1.184 -U dataeng -d analytics_db -c \
 **Monitor connector health:**
 ```bash
 # Check connector status
-curl -s localhost:8083/connectors/postgres-debezium-connector/status | jq '.connector.state'
+curl -s 192.168.1.184:8083/connectors/postgres-debezium-connector/status | jq '.connector.state'
 
 # Check task status
-curl -s localhost:8083/connectors/postgres-debezium-connector/tasks/0/status | jq
+curl -s 192.168.1.184:8083/connectors/postgres-debezium-connector/tasks/0/status | jq
 
 # View connector metrics
-curl -s localhost:8083/connectors/postgres-debezium-connector | jq
+curl -s 192.168.1.184:8083/connectors/postgres-debezium-connector | jq
 ```
 
 **Manage CDC connector:**
 ```bash
 # Pause connector
-curl -X PUT localhost:8083/connectors/postgres-debezium-connector/pause
+curl -X PUT 192.168.1.184:8083/connectors/postgres-debezium-connector/pause
 
 # Resume connector
-curl -X PUT localhost:8083/connectors/postgres-debezium-connector/resume
+curl -X PUT 192.168.1.184:8083/connectors/postgres-debezium-connector/resume
 
 # Restart connector
-curl -X POST localhost:8083/connectors/postgres-debezium-connector/restart
+curl -X POST 192.168.1.184:8083/connectors/postgres-debezium-connector/restart
 
 # Delete connector
-curl -X DELETE localhost:8083/connectors/postgres-debezium-connector
+curl -X DELETE 192.168.1.184:8083/connectors/postgres-debezium-connector
 ```
 
-### 📈 Advanced CDC Configuration
+### 📈 **OPTIONAL: Advanced CDC Configuration**
 
-**High-availability CDC setup:**
-```json
+**🤔 Skip This Section Unless You Need:**
+- Multiple CDC connectors
+- Specific table filtering
+- Custom message transformations
+- Different topic naming
+
+**🚨 If you just want basic CDC working, SKIP this section and proceed to Integration!**
+
+---
+
+#### **🔧 Alternative: Production-Ready CDC Connector**
+
+**Run on cpu-node1 ONLY - This REPLACES the basic connector if you want more features:**
+
+```bash
+# Step 1: Delete the basic connector (if you deployed it)
+curl -X DELETE 192.168.1.184:8083/connectors/postgres-debezium-connector
+
+# Step 2: Create advanced connector configuration
+cat > /tmp/postgres-advanced-connector.json << 'EOF'
 {
-  "name": "postgres-ha-cdc-connector",
+  "name": "postgres-production-cdc-connector",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
     "tasks.max": "2",
@@ -650,11 +1157,11 @@ curl -X DELETE localhost:8083/connectors/postgres-debezium-connector
     "database.user": "cdc_user",
     "database.password": "cdc_password123",
     "database.dbname": "analytics_db",
-    "database.server.name": "postgres-ha-server",
+    "database.server.name": "postgres-production",
     "table.include.list": "public.user_events,public.orders,public.products",
     "publication.name": "debezium_publication",
-    "slot.name": "debezium_ha_slot",
-    "topic.prefix": "postgres-ha",
+    "slot.name": "debezium_production_slot",
+    "topic.prefix": "postgres-prod",
     "schema.include.list": "public",
     "plugin.name": "pgoutput",
     "snapshot.mode": "initial",
@@ -667,14 +1174,51 @@ curl -X DELETE localhost:8083/connectors/postgres-debezium-connector
     "transforms.unwrap.drop.tombstones": "false"
   }
 }
+EOF
+
+# Step 3: Deploy the advanced connector
+curl -X POST -H "Content-Type: application/json" --data @/tmp/postgres-advanced-connector.json 192.168.1.184:8083/connectors
+
+# Step 4: Verify deployment
+curl -s 192.168.1.184:8083/connectors/postgres-production-cdc-connector/status | jq
+```
+
+**🎯 Key Differences from Basic Setup:**
+- ✅ **Multiple tasks** (`tasks.max: 2`) for better performance
+- ✅ **Specific table filtering** (only user_events, orders, products)
+- ✅ **Custom topic prefix** (`postgres-prod.*` instead of `postgres.*`)
+- ✅ **Message unwrapping** (removes Debezium metadata envelope)
+- ✅ **Custom key columns** for proper partitioning
+
+**📊 Result Topics:**
+```
+postgres-prod.user_events    ← CDC events for user_events table
+postgres-prod.orders         ← CDC events for orders table  
+postgres-prod.products       ← CDC events for products table
 ```
 
 ## Integration with Other Components
 
-- **Spark Integration**: Use Spark Streaming with Kafka for real-time processing
-- **Flink Integration**: Use Flink Kafka connectors for stream processing
-- **PostgreSQL Integration**: ✅ **Debezium CDC configured above** - Real-time change data capture
+### ✅ **Fully Documented Integrations:**
+
+- **📊 Spark Integration**: ✅ **[Spark Cluster Setup Guide](03_spark_cluster_setup.md)** - Complete Kafka Structured Streaming examples
+- **🌊 Flink Integration**: ✅ **[Flink Cluster Setup Guide](04_flink_cluster_setup.md)** - Kafka SQL connectors & CDC streaming  
+- **🔍 Trino Integration**: ✅ **[Trino Cluster Setup Guide](05_trino_cluster_setup.md)** - Kafka connector & streaming analysis
+- **🏔️ Iceberg Integration**: ✅ **[Iceberg Setup Guide](06_iceberg_local_setup.md)** - Kafka to Iceberg streaming
+- **🌊 Delta Lake Integration**: ✅ **[Delta Lake Setup Guide](07_deltalake_local_setup.md)** - Complete Kafka integration script
+- **📈 PostgreSQL Integration**: ✅ **Debezium CDC configured above** - Real-time change data capture
+- **🗄️ Redis Integration**: ✅ **[Redis Setup Guide](09_redis_setup.md)** - Kafka to Redis Stream processing
+- **🍽️ Feast Integration**: ✅ **[Feast Setup Guide](10_feast_feature_store_setup.md)** - Kafka feature sources
+
+### 🔄 **Additional Integrations Available:**
+
+- **📊 Neo4j Integration**: ✅ **[Neo4j Setup Guide](08_neo4j_graph_database_setup.md)** - Kafka to Neo4j streaming
+
+### 🏗️ **Not Yet Implemented:**
+
 - **Schema Registry**: Consider Confluent Schema Registry for Avro/JSON schema management
+- **Kafka Streams**: Native stream processing within Kafka ecosystem
+- **Connect Transforms**: Custom message transformations in Kafka Connect
 
 ## Troubleshooting
 
@@ -683,6 +1227,10 @@ curl -X DELETE localhost:8083/connectors/postgres-debezium-connector
 2. **Network partitions**: Check ZooKeeper connectivity
 3. **Slow consumers**: Monitor consumer lag and tune fetch settings
 4. **Disk space**: Monitor log retention and cleanup policies
+5. **"Connection to localhost:9092 could not be established"**: 
+   - ❌ **Don't use** `localhost:9092`
+   - ✅ **Use the node's IP** (`192.168.1.184:9092`, `192.168.1.187:9092`, or `192.168.1.190:9092`)
+   - **Reason**: Kafka is configured to bind to specific IPs, not localhost
 
 ### Log Locations:
 - Kafka logs: `/opt/kafka/logs/server.log`
