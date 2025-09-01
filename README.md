@@ -51,11 +51,66 @@ This project provides a complete data engineering ecosystem deployed across mult
 - **Data Formats**: Parquet, Avro, JSON, Graph formats
 - **Orchestration**: Built-in schedulers + custom workflows
 
+## 📁 **Repository Structure**
+
+```
+DataEngineering/
+├── building_block_apps/     ← 🧱 Language-agnostic examples (Python, Java, C++)
+│   ├── kafka/              ← Complete Kafka producer/consumer examples
+│   ├── spark/              ← Complete Spark batch, streaming, SQL, ETL examples
+│   ├── flink/              ← Coming soon: Flink streaming jobs
+│   └── postgresql/         ← Coming soon: Database clients
+├── setup_guide/            ← 📚 Step-by-step deployment guides
+├── architecture/           ← 🏗️ In-depth architecture documentation
+└── README.md              ← You are here!
+```
+
 ## 🏗️ Architecture Guides
 
 For in-depth understanding of distributed system architectures:
 
 - **[Kafka Architecture Guide](architecture/kafka_architecture_guide.md)** - Comprehensive guide to your 3-node Kafka setup with scaling strategies
+- **[Spark Architecture Guide](architecture/spark_architecture_guide.md)** - Complete Spark distributed architecture from basics to advanced optimization
+
+---
+
+## 🧱 **Building Block Applications**
+
+Before diving into complex end-to-end applications, master the fundamentals with our **language-agnostic building blocks**:
+
+### **[Building Block Apps](building_block_apps/README.md)** - Foundation Components in Python, Java & C++
+
+**Ready-to-Run Examples with Bazel Build System:**
+- **✅ Kafka**: Producers/consumers in Python, Java, C++ with comprehensive error handling
+- **✅ Spark**: Batch processing, structured streaming, SQL analytics, ETL pipelines
+- **🔄 Flink**: Coming soon - DataStream API, Table API, and complex event processing  
+- **🔄 PostgreSQL**: Coming soon - Advanced queries, connection pooling, CDC clients
+- **🔄 Trino**: Coming soon - Federated queries and performance optimization
+
+**Why Building Blocks?**
+- **Language-Agnostic Learning**: Compare Python simplicity, Java robustness, C++ performance
+- **Uniform Build System**: Single `bazel` command for all languages and components  
+- **Production-Ready**: Error handling, monitoring, and configuration best practices
+- **Foundation for Advanced Apps**: Combine blocks to build the [12 application ideas](setup_guide/12_application_ideas_medium_to_advanced.md)
+
+```bash
+# Quick start with building blocks
+cd building_block_apps
+
+# Python Kafka producer
+bazel run //kafka/python:producer -- --topic demo --count 100
+
+# Java Kafka consumer
+bazel run //kafka/java:Consumer -- --topic demo --group my-group
+
+# Python Spark batch processing
+bazel run //spark/python:batch_processing -- --records 10000
+
+# C++ Spark ETL pipeline
+bazel run //spark/cpp:etl_pipeline -- --records 5000
+```
+
+**Learning Path**: Start with building blocks → Master component interactions → Build advanced applications
 
 ---
 

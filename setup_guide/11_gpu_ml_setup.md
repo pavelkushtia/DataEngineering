@@ -312,9 +312,9 @@ source ~/.bashrc
 
 # Download and install Spark
 cd /home/$(whoami)
-wget https://downloads.apache.org/spark/spark-3.5.0/spark-3.5.0-bin-hadoop3.tgz
-tar -xzf spark-3.5.0-bin-hadoop3.tgz
-mv spark-3.5.0-bin-hadoop3 spark
+wget https://dlcdn.apache.org/spark/spark-3.5.6/spark-3.5.6-bin-hadoop3.tgz
+tar -xzf spark-3.5.6-bin-hadoop3.tgz
+mv spark-3.5.6-bin-hadoop3 spark
 
 # Add Spark to PATH
 echo 'export SPARK_HOME=/home/'$(whoami)'/spark' >> ~/.bashrc

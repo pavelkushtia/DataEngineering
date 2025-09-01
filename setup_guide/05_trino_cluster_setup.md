@@ -21,7 +21,7 @@ Trino will be set up in cluster mode with cpu-node1 as the coordinator and cpu-n
 │   (Coordinator)     │    │    (Worker 1)       │    │    (Worker 2)       │
 │  - Query Planning   │    │  - Query Execution  │    │  - Query Execution  │
 │  - Client Interface │    │  - Data Processing  │    │  - Data Processing  │
-│  - Web UI (8080)    │    │  - Connectors       │    │  - Connectors       │
+│  - Web UI (8081)    │    │  - Connectors       │    │  - Connectors       │
 │  192.168.1.184      │    │  192.168.1.187      │    │  192.168.1.190      │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
@@ -97,12 +97,12 @@ nano /home/trino/trino/etc/config.properties
 # Coordinator configuration
 coordinator=true
 node-scheduler.include-coordinator=false
-http-server.http.port=8080
+http-server.http.port=8081
 query.max-memory=8GB
 query.max-memory-per-node=2GB
 query.max-total-memory-per-node=3GB
 discovery-server.enabled=true
-discovery.uri=http://192.168.1.184:8080
+discovery.uri=http://192.168.1.184:8081
 ```
 
 ### Node properties:
@@ -159,10 +159,10 @@ nano /home/trino/trino/etc/config.properties
 ```properties
 # Worker configuration
 coordinator=false
-http-server.http.port=8080
+http-server.http.port=8081
 query.max-memory-per-node=2GB
 query.max-total-memory-per-node=3GB
-discovery.uri=http://192.168.1.184:8080
+discovery.uri=http://192.168.1.184:8081
 ```
 
 ### Node properties for cpu-node2:
@@ -184,10 +184,10 @@ nano /home/trino/trino/etc/config.properties
 ```properties
 # Worker configuration
 coordinator=false
-http-server.http.port=8080
+http-server.http.port=8081
 query.max-memory-per-node=2GB
 query.max-total-memory-per-node=3GB
-discovery.uri=http://192.168.1.184:8080
+discovery.uri=http://192.168.1.184:8081
 ```
 
 ### Node properties for worker-node3:
@@ -342,7 +342,7 @@ sudo systemctl status trino
 
 ```bash
 # Open required ports
-sudo ufw allow 8080/tcp   # Trino HTTP port
+sudo ufw allow 8081/tcp   # Trino HTTP port
 sudo ufw reload
 ```
 
@@ -363,15 +363,15 @@ sudo ln -s /home/trino/trino-cli /usr/local/bin/trino
 ## Step 12: Testing the Cluster
 
 ### Access Trino Web UI:
-Open browser and go to: http://192.168.1.184:8080
+Open browser and go to: http://192.168.1.184:8081
 
 ### Test with CLI:
 ```bash
 # Connect to Trino
-./trino-cli --server http://192.168.1.184:8080 --catalog tpch --schema tiny
+./trino-cli --server http://192.168.1.184:8081 --catalog tpch --schema tiny
 
 # Or using the symbolic link
-trino --server http://192.168.1.184:8080 --catalog tpch --schema tiny
+trino --server http://192.168.1.184:8081 --catalog tpch --schema tiny
 ```
 
 ### Run test queries:
@@ -661,8 +661,8 @@ find /home/trino/trino/data/spill -type f -mtime +1 -delete
 ```bash
 #!/bin/bash
 # Health check script
-COORDINATOR="192.168.1.184:8080"
-WORKERS=("192.168.1.187:8080" "192.168.1.190:8080")
+COORDINATOR="192.168.1.184:8081"
+WORKERS=("192.168.1.187:8081" "192.168.1.190:8081")
 
 # Check coordinator
 if curl -f -s http://$COORDINATOR/v1/info > /dev/null; then
@@ -695,10 +695,10 @@ done
 tail -f /home/trino/trino/var/log/server.log
 
 # Check if port is listening
-netstat -tlnp | grep 8080
+netstat -tlnp | grep 8081
 
 # Test network connectivity
-telnet 192.168.1.184 8080
+telnet 192.168.1.184 8081
 
 # Check Java processes
 jps | grep -i trino

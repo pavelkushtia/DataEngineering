@@ -612,7 +612,7 @@ kafka:
       zookeeper: 192.168.1.184:2181,192.168.1.187:2181,192.168.1.190:2181
 
 server:
-  port: 8080
+  port: 8082
   
 spring:
   jmx:
@@ -653,9 +653,9 @@ sudo systemctl enable kafka-ui
 sudo systemctl status kafka-ui
 
 # Open firewall for web access
-sudo ufw allow 8080/tcp
+sudo ufw allow 8082/tcp
 
-echo "✅ Kafka UI available at: http://192.168.1.184:8080"
+echo "✅ Kafka UI available at: http://192.168.1.184:8082"
 ```
 
 **📝 Note:** Using v0.4.0 for Java 11 compatibility. If you have Java 17+, you can use v0.7.1+ for more features.
@@ -789,7 +789,7 @@ echo "✅ Kafdrop available at: http://192.168.1.184:9001"
 
 After setup, access your Kafka cluster via:
 - **Kafdrop**: `http://192.168.1.184:9001` ⭐ **Recommended for Java 11**
-- **Kafka UI**: `http://192.168.1.184:8080` (Requires Java 17+)
+- **Kafka UI**: `http://192.168.1.184:8082` (Requires Java 17+)
 - **CMAK**: `http://192.168.1.184:9000` (Classic)
 
 ## High Availability Considerations

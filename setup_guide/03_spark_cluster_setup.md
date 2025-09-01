@@ -76,13 +76,13 @@ ssh spark@192.168.1.190 "hostname"
 sudo su - spark
 cd /home/spark
 
-# Download Spark
-wget https://downloads.apache.org/spark/spark-3.5.0/spark-3.5.0-bin-hadoop3.tgz
+# Download Spark (Latest Stable Version)
+wget https://dlcdn.apache.org/spark/spark-3.5.6/spark-3.5.6-bin-hadoop3.tgz
 
 # Extract and setup
-tar -xzf spark-3.5.0-bin-hadoop3.tgz
-mv spark-3.5.0-bin-hadoop3 spark
-rm spark-3.5.0-bin-hadoop3.tgz
+tar -xzf spark-3.5.6-bin-hadoop3.tgz
+mv spark-3.5.6-bin-hadoop3 spark
+rm spark-3.5.6-bin-hadoop3.tgz
 
 # Add Spark to PATH
 echo 'export SPARK_HOME=/home/spark/spark' >> ~/.bashrc
@@ -138,14 +138,21 @@ export SPARK_MASTER_OPTS="-Dspark.deploy.recoveryMode=FILESYSTEM -Dspark.deploy.
 
 ### Configure workers file:
 ```bash
+# Create/edit the workers file (defines which nodes are Spark workers)
 nano workers
 ```
 
-Add worker nodes:
+**Replace the entire contents** with your worker node IP addresses:
 ```
 192.168.1.187
 192.168.1.190
 ```
+
+**Note**: 
+- Remove any existing content (including `localhost` if present)
+- Each IP address should be on its own line
+- These are the nodes that will run Spark executors
+- The master node (192.168.1.184) is NOT included in this file
 
 ### Configure spark-defaults.conf:
 ```bash
@@ -267,6 +274,7 @@ WantedBy=multi-user.target
 sudo nano /etc/systemd/system/spark-worker.service
 ```
 
+**For Physical Machines or Standard VMs:**
 ```ini
 [Unit]
 Description=Apache Spark Worker
@@ -288,6 +296,32 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 ```
+
+**For Hyper-V Virtual Machines (worker-node3):**
+```ini
+[Unit]
+Description=Apache Spark Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=spark
+Group=spark
+WorkingDirectory=/home/spark/spark
+Environment=SPARK_HOME=/home/spark/spark
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+Environment=SPARK_LOCAL_IP=192.168.1.190
+ExecStart=/home/spark/spark/sbin/start-worker.sh --host 192.168.1.190 spark://192.168.1.184:7077
+ExecStop=/home/spark/spark/sbin/stop-worker.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> **Note**: The Hyper-V configuration includes explicit IP binding to resolve network binding issues with Hyper-V's synthetic network adapter (`hv_netvsc`). See the Hyper-V troubleshooting section below for details.
 
 ### Spark History Server Service (cpu-node1):
 ```bash
@@ -387,15 +421,16 @@ println(s"Even numbers count: $result")
   --master spark://192.168.1.184:7077 \
   --executor-memory 1g \
   --total-executor-cores 4 \
-  ./examples/jars/spark-examples_2.12-3.5.0.jar \
+  ./examples/jars/spark-examples_2.12-3.5.6.jar \
   100
 ```
 
 ## Step 11: Additional Dependencies for Data Engineering
 
-### Download and install additional JARs:
+### Download and install additional JARs (Run on Master Node):
 ```bash
 # Create jars directory
+sudo su - spark
 mkdir -p $SPARK_HOME/jars-ext
 
 cd $SPARK_HOME/jars-ext
@@ -404,10 +439,10 @@ cd $SPARK_HOME/jars-ext
 wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar
 
 # Kafka integration
-wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar
+wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.6/spark-sql-kafka-0-10_2.12-3.5.6.jar
 wget https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar
 
-# Delta Lake
+# Delta Lake (REQUIRED - fixes ClassNotFoundException)
 wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar
 wget https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar
 
@@ -420,12 +455,25 @@ wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.367/a
 
 # Copy JARs to main jars directory
 cp *.jar $SPARK_HOME/jars/
+
+# Copy JARs to worker nodes
+scp *.jar spark@192.168.1.187:$SPARK_HOME/jars/
+scp *.jar spark@192.168.1.190:$SPARK_HOME/jars/
+```
+
+### Restart Spark services after adding JARs:
+```bash
+# Restart services on all nodes
+sudo systemctl restart spark-master
+sudo systemctl restart spark-worker  # Run on worker nodes
+sudo systemctl restart spark-history
 ```
 
 ## Step 12: Create Sample Applications
 
 ### Create Python example:
 ```bash
+mkdir -p /home/spark/sample_apps
 nano /home/spark/sample_apps/word_count.py
 ```
 
@@ -549,6 +597,150 @@ delta_df = spark.read \
 2. **OutOfMemory errors**: Increase executor memory or reduce parallelism
 3. **Shuffle errors**: Increase spark.sql.shuffle.partitions
 4. **Slow startup**: Check DNS resolution and network latency
+5. **Hyper-V VM binding issues**: See Hyper-V specific troubleshooting below
+6. **Delta Lake ClassNotFoundException**: See Delta Lake specific troubleshooting below
+
+### 🔧 **Delta Lake ClassNotFoundException Fix**
+
+#### **Problem: `java.lang.ClassNotFoundException: io.delta.sql.DeltaSparkSessionExtension`**
+
+**Symptoms:**
+- Spark shell starts but shows warning about unable to configure Delta Lake extensions
+- Error: `Cannot use io.delta.sql.DeltaSparkSessionExtension to configure session extensions`
+- Long stack trace mentioning `ClassNotFoundException`
+
+**Root Cause:**
+The Spark configuration includes Delta Lake extensions in `spark-defaults.conf`, but the required JAR files are missing from the classpath.
+
+**Solution: Install Delta Lake JARs**
+
+```bash
+# 1. Switch to spark user
+sudo su - spark
+
+# 2. Download Delta Lake JARs
+cd $SPARK_HOME/jars-ext
+wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar
+wget https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar
+
+# 3. Copy to Spark jars directory
+cp *.jar $SPARK_HOME/jars/
+
+# 4. Copy to worker nodes
+scp delta-*.jar spark@192.168.1.187:$SPARK_HOME/jars/
+scp delta-*.jar spark@192.168.1.190:$SPARK_HOME/jars/
+
+# 5. Restart Spark services
+exit  # Exit spark user
+sudo systemctl restart spark-master
+ssh 192.168.1.187 "sudo systemctl restart spark-worker"
+ssh 192.168.1.190 "sudo systemctl restart spark-worker"
+sudo systemctl restart spark-history
+```
+
+**Alternative Solution: Remove Delta Lake from Configuration**
+
+If you don't need Delta Lake, remove these lines from `$SPARK_HOME/conf/spark-defaults.conf`:
+```bash
+# Comment out or remove these lines
+# spark.sql.extensions            io.delta.sql.DeltaSparkSessionExtension
+# spark.sql.catalog.spark_catalog org.apache.spark.sql.delta.catalog.DeltaCatalog
+```
+
+**Verification:**
+```bash
+# Test Spark shell without warnings
+sudo su - spark
+cd $SPARK_HOME
+./bin/spark-shell --master spark://192.168.1.184:7077
+
+# Should start without Delta Lake warnings
+# In Spark shell, test Delta Lake:
+scala> import io.delta.tables._
+scala> spark.range(5).write.format("delta").save("/tmp/test-delta")
+scala> :quit
+```
+
+**Success Indicators:**
+- ✅ No `ClassNotFoundException` warnings during startup
+- ✅ Can import `io.delta.tables._` in Spark shell
+- ✅ Can write Delta format tables
+
+### 🚨 **Hyper-V Virtual Machine Specific Issues**
+
+#### **Problem: `java.net.BindException: Cannot assign requested address`**
+
+**Symptoms:**
+- Spark worker fails to start on Hyper-V VMs
+- Error: `Service 'sparkWorker' failed after 16 retries`
+- All ports in range 7078-7094 fail to bind
+- Multiple `Cannot assign requested address` errors
+
+**Root Cause:**
+Hyper-V's synthetic network adapter (`hv_netvsc`) creates a virtualization layer that interferes with Java/Netty binding to `0.0.0.0` (all interfaces). This is specific to:
+- **Hyper-V VMs** (not VMware, KVM, or physical machines)
+- **Complex IPv6 configurations** generated by Hyper-V
+- **Netty binding behavior** (different from standard sockets)
+
+**Solution 1: Explicit IP Binding (Recommended)**
+```bash
+# Update systemd service to use explicit IP binding
+sudo nano /etc/systemd/system/spark-worker.service
+
+# Add these environment variables and host parameter:
+Environment=SPARK_LOCAL_IP=192.168.1.190
+ExecStart=/home/spark/spark/sbin/start-worker.sh --host 192.168.1.190 spark://192.168.1.184:7077
+```
+
+**Solution 2: Disable IPv6 (If Solution 1 doesn't work)**
+```bash
+# Temporarily disable IPv6
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+sudo sysctl -w net.ipv6.conf.eth0.disable_ipv6=1
+
+# Make permanent
+echo 'net.ipv6.conf.all.disable_ipv6 = 1' | sudo tee -a /etc/sysctl.conf
+echo 'net.ipv6.conf.default.disable_ipv6 = 1' | sudo tee -a /etc/sysctl.conf
+echo 'net.ipv6.conf.eth0.disable_ipv6 = 1' | sudo tee -a /etc/sysctl.conf
+```
+
+**Verification Steps:**
+```bash
+# 1. Test basic network binding
+nc -l 192.168.1.190 8999 &
+jobs
+kill %1
+
+# 2. Test manual Spark worker with explicit IP
+sudo -u spark JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64 \
+  SPARK_HOME=/home/spark/spark \
+  SPARK_LOCAL_IP=192.168.1.190 \
+  /home/spark/spark/bin/spark-class org.apache.spark.deploy.worker.Worker \
+  --webui-port 8081 --port 7078 --host 192.168.1.190 \
+  spark://192.168.1.184:7077
+
+# 3. Check IPv6 is disabled
+ip addr show eth0  # Should only show IPv4 address
+
+# 4. Restart service with new configuration
+sudo systemctl daemon-reload
+sudo systemctl restart spark-worker
+sudo systemctl status spark-worker
+```
+
+**Success Indicators:**
+- ✅ `Successfully started service 'sparkWorker' on port 7078`
+- ✅ `Successfully registered with master spark://192.168.1.184:7077`
+- ✅ Worker appears in Spark Master Web UI (http://192.168.1.184:8080)
+
+#### **Hyper-V Environment Identification:**
+```bash
+# Check if running on Hyper-V
+systemd-detect-virt          # Should return: microsoft
+lsmod | grep hv_             # Should show: hv_netvsc, hv_vmbus, etc.
+dmidecode -s system-manufacturer  # Should show Hyper-V related info
+```
 
 ### Useful debugging commands:
 ```bash
@@ -560,6 +752,13 @@ telnet 192.168.1.184 7077
 
 # Check logs
 tail -f $SPARK_HOME/logs/*.out
+
+# Monitor systemd service
+journalctl -u spark-worker -f
+
+# Check network binding issues
+sudo netstat -tlnp | grep java
+sudo ss -tlnp | grep ":707[8-9]\|:708[0-9]\|:709[0-4]"
 ```
 
 ## Backup and Maintenance
