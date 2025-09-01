@@ -15,11 +15,12 @@ This guide explains the Kafka architecture based on **your exact setup**:
 2. [Your Current Architecture](#your-current-architecture)
 3. [ZooKeeper Cluster Architecture](#zookeeper-cluster-architecture)
 4. [Kafka Broker Cluster](#kafka-broker-cluster)
-5. [Message Flow & Distribution](#message-flow--distribution)
-6. [Topics, Partitions & Replication](#topics-partitions--replication)
-7. [Producer & Consumer Architecture](#producer--consumer-architecture)
-8. [Scaling Your Setup](#scaling-your-setup)
-9. [Architecture Changes When Adding Nodes](#architecture-changes-when-adding-nodes)
+5. [Controller vs Partition Leaders](#controller-vs-partition-leaders)
+6. [Message Flow & Distribution](#message-flow--distribution)
+7. [Topics, Partitions & Replication](#topics-partitions--replication)
+8. [Producer & Consumer Architecture](#producer--consumer-architecture)
+9. [Scaling Your Setup](#scaling-your-setup)
+10. [Architecture Changes When Adding Nodes](#architecture-changes-when-adding-nodes)
 
 ---
 
@@ -319,6 +320,241 @@ graph TB
     class P0,P1,P2 partition
     class D1,D2,D3 storage
     class PROD1,PROD2,PROD3,CONS1,CONS2,CONS3 client
+```
+
+---
+
+## 🎯 Controller vs Partition Leaders
+
+### **Critical Distinction: Two Different Roles!**
+
+Many people confuse these, but they serve completely different purposes in your Kafka cluster:
+
+**🎯 CONTROLLER** = **Cluster Manager** (1 broker elected)
+**📦 PARTITION LEADERS** = **Data Handlers** (Multiple brokers, each leading different partitions)
+
+---
+
+### **🎯 The Controller (Currently: Broker 2 in your cluster)**
+
+**What is the Controller?**
+- **ONE special broker** elected from your 3 brokers
+- Acts as the **"cluster coordinator"** 
+- **Manages metadata** and orchestrates changes
+- **Does NOT handle data I/O** directly
+
+**Controller Responsibilities:**
+```
+🔹 Manages partition leader elections
+🔹 Detects broker failures and recoveries  
+🔹 Handles partition reassignments
+🔹 Updates cluster metadata in ZooKeeper
+🔹 Coordinates topic creation/deletion
+🔹 Manages consumer group coordinator assignments
+```
+
+**Current Controller in Your Cluster:**
+- **Broker 2** (cpu-node2 / 192.168.1.187) is your current controller
+- If Broker 2 fails, Broker 1 or 3 will become the new controller
+- Controller election is automatic and fast (seconds)
+
+---
+
+### **📦 Partition Leaders (Multiple brokers)**
+
+**What are Partition Leaders?**
+- **EACH broker** can lead multiple partitions
+- Handle **ALL data I/O** for their partitions
+- **Multiple leaders** exist simultaneously across brokers
+- Each partition has exactly **1 leader** + **N followers**
+
+**Partition Leader Responsibilities:**
+```
+🔹 Accept writes from producers
+🔹 Serve reads to consumers  
+🔹 Coordinate replication to followers
+🔹 Maintain partition logs on disk
+🔹 Handle consumer offset management
+```
+
+**Example in Your 3-Broker Cluster:**
+```
+Topic: "user-events" (3 partitions, replication factor = 3)
+
+┌─────────────┬─────────────────┬─────────────────────────┐
+│ Partition   │ Leader          │ Followers               │
+├─────────────┼─────────────────┼─────────────────────────┤
+│ Partition 0 │ Broker 1 (184) │ Broker 2 (187), Br 3   │
+│ Partition 1 │ Broker 2 (187) │ Broker 3 (190), Br 1   │  
+│ Partition 2 │ Broker 3 (190) │ Broker 1 (184), Br 2   │
+└─────────────┴─────────────────┴─────────────────────────┘
+
+• ALL brokers store data (as leaders + followers)
+• Leadership is DISTRIBUTED across brokers
+• Producers/consumers connect to partition LEADERS
+```
+
+---
+
+### **🤝 How Controller & Partition Leaders Work Together**
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor': '#f8f9fa', 'primaryTextColor': '#212529', 'primaryBorderColor': '#495057', 'lineColor': '#495057', 'secondaryColor': '#e9ecef', 'tertiaryColor': '#f8f9fa'}}}%%
+graph TB
+    subgraph "Kafka Cluster Roles"
+        subgraph "CONTROLLER (1 broker elected)"
+            CTRL["🎯 Controller Broker<br/>(Currently: Broker 2)<br/><br/>📋 Responsibilities:<br/>• Manages partition leader elections<br/>• Handles broker failures<br/>• Updates ZooKeeper metadata<br/>• Manages partition reassignments<br/>• Coordinates cluster changes"]
+        end
+        
+        subgraph "PARTITION LEADERS (Multiple brokers)"
+            PL1["📦 Broker 1<br/>Partition Leader for:<br/>• test-topic partition-1<br/>• test-topic partition-4<br/>• __consumer_offsets (17)"]
+            PL2["📦 Broker 2<br/>Partition Leader for:<br/>• test-topic partition-2<br/>• test-topic partition-5<br/>• __consumer_offsets (17)"]
+            PL3["📦 Broker 3<br/>Partition Leader for:<br/>• test-topic partition-0<br/>• test-topic partition-3<br/>• __consumer_offsets (16)"]
+        end
+    end
+    
+    subgraph "When Broker 2 Fails"
+        subgraph "Controller Actions"
+            CA1["🚨 Detects Broker 2 failure"]
+            CA2["🔄 Elects new leaders for<br/>Broker 2's partitions"]
+            CA3["📝 Updates metadata in ZooKeeper"]
+            CA4["📢 Notifies all brokers<br/>of leadership changes"]
+        end
+        
+        subgraph "Result"
+            R1["✅ Broker 1 takes over:<br/>• test-topic partition-1<br/>• test-topic partition-4<br/>• test-topic partition-2 (NEW)<br/>• Some __consumer_offsets (NEW)"]
+            R2["✅ Broker 3 takes over:<br/>• test-topic partition-0<br/>• test-topic partition-3<br/>• test-topic partition-5 (NEW)<br/>• Some __consumer_offsets (NEW)"]
+        end
+    end
+    
+    CTRL -->|"Orchestrates"| CA1
+    CA1 --> CA2
+    CA2 --> CA3
+    CA3 --> CA4
+    CA4 --> R1
+    CA4 --> R2
+    
+    classDef controller fill:#d4edda,stroke:#155724,stroke-width:3px
+    classDef partitionLeader fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef action fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef result fill:#cce5ff,stroke:#004080,stroke-width:2px
+    
+    class CTRL controller
+    class PL1,PL2,PL3 partitionLeader
+    class CA1,CA2,CA3,CA4 action
+    class R1,R2 result
+```
+
+**Normal Operation:**
+1. **Producers** send data → **Partition Leaders** (not controller)
+2. **Partition Leaders** handle all data I/O
+3. **Controller** watches cluster health in background
+4. Everything works independently
+
+**When Failure Occurs:**
+1. **Controller detects** broker failure (via ZooKeeper)
+2. **Controller elects** new partition leaders from surviving replicas
+3. **Controller updates** metadata in ZooKeeper  
+4. **Controller notifies** all brokers of leadership changes
+5. **New partition leaders** immediately start serving requests
+6. **Data flow resumes** with minimal interruption
+
+---
+
+### **💡 Real-World Analogy**
+
+Think of your Kafka cluster like a **restaurant chain**:
+
+**🎯 Controller = Regional Manager**
+- Manages **3 restaurant locations** (your 3 brokers)
+- Doesn't serve customers directly
+- When a location manager quits, **assigns a replacement**
+- Updates corporate directory with management changes
+- Ensures all locations are properly staffed
+
+**📦 Partition Leaders = Restaurant Managers** 
+- Each location has a **manager** (partition leader)
+- **Directly serves customers** (handles producer/consumer requests)
+- Multiple managers work **simultaneously** across locations
+- If a manager leaves, regional manager **promotes someone else**
+
+**Key Point:** The regional manager (controller) **doesn't serve food**, but ensures the **restaurant managers** (partition leaders) can do their jobs effectively!
+
+---
+
+### **🔍 Checking Your Current Setup**
+
+**See your current controller:**
+```bash
+# Check which broker is the controller
+/opt/kafka/bin/zookeeper-shell.sh 192.168.1.184:2181 <<< "get /controller"
+# Result: {"brokerid": 2} = Broker 2 is controller
+```
+
+**See partition leadership distribution:**
+```bash
+# Check partition leaders for all topics
+/opt/kafka/bin/kafka-topics.sh --describe \
+  --bootstrap-server 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
+```
+
+**Monitor controller changes:**
+```bash
+# Watch for controller election events
+tail -f /opt/kafka/logs/server.log | grep -i "controller"
+```
+
+---
+
+### **🚨 What Happens When Each Fails?**
+
+**Controller Failure (Broker 2 fails):**
+```
+❌ Broker 2 (Controller) goes down
+⚡ Remaining brokers (1 & 3) hold controller election
+🎯 Broker 1 or 3 becomes new controller (automatic, ~5 seconds)
+✅ Partition leaders continue serving data uninterrupted
+✅ New controller manages any needed leadership changes
+```
+
+**Partition Leader Failure (Any broker fails):**
+```
+❌ Broker with partition leaders goes down  
+🎯 Controller detects failure via ZooKeeper
+⚡ Controller promotes follower replicas to leaders
+📢 Controller notifies all brokers of leadership changes
+✅ New partition leaders immediately start serving requests
+⏱️ Downtime: ~10-30 seconds depending on configuration
+```
+
+**Both Controller AND Partition Leader Fail:**
+```
+❌ Controller broker fails (e.g., Broker 2)
+⚡ New controller elected (e.g., Broker 1)  
+🎯 New controller immediately handles partition leader elections
+✅ All failures handled automatically
+📈 Total recovery time: ~30-60 seconds
+```
+
+---
+
+### **🎛️ Configuration Impact**
+
+**Controller-related settings:**
+```properties
+# How often controller checks for failed brokers
+controller.socket.timeout.ms=30000
+
+# Controller-to-broker communication timeout  
+controlled.shutdown.max.retries=3
+controlled.shutdown.retry.backoff.ms=5000
+```
+
+**Partition leader election settings:**
+```properties
+# How quickly new leaders are elected
+unclean.leader.election.enable=false
+leader.imbalance.check.interval.seconds=300
 ```
 
 ---
