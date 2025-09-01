@@ -1,0 +1,64 @@
+package(default_visibility = ["//visibility:public"])
+
+# C++ Kafka Producer
+cc_binary(
+    name = "producer",
+    srcs = ["producer.cpp"],
+    deps = [
+        ":kafka_common",
+    ],
+    copts = [
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+    ],
+    linkopts = [
+        "-lrdkafka++",
+        "-lrdkafka",
+        "-lpthread",
+    ],
+)
+
+# C++ Kafka Consumer
+cc_binary(
+    name = "consumer",
+    srcs = ["consumer.cpp"],
+    deps = [
+        ":kafka_common",
+    ],
+    copts = [
+        "-std=c++17",
+        "-Wall", 
+        "-Wextra",
+    ],
+    linkopts = [
+        "-lrdkafka++",
+        "-lrdkafka",
+        "-lpthread",
+    ],
+)
+
+# Common Kafka utilities
+cc_library(
+    name = "kafka_common",
+    srcs = ["kafka_common.cpp"],
+    hdrs = ["kafka_common.h"],
+    copts = [
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+    ],
+    linkopts = [
+        "-lrdkafka++",
+        "-lrdkafka",
+    ],
+)
+
+# Aggregate target
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":producer",
+        ":consumer", 
+    ],
+)

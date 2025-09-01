@@ -1,0 +1,51 @@
+workspace(name = "data_engineering_building_blocks")
+
+# Load rules for different languages
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Python Rules
+http_archive(
+    name = "rules_python",
+    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
+    strip_prefix = "rules_python-0.31.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
+)
+
+load("@rules_python//python:repositories.bzl", "py_repositories")
+py_repositories()
+
+# Java Rules (built into Bazel)
+
+# C++ Rules (built into Bazel, but we might need additional libraries)
+
+# Protocol Buffers (might be needed for Kafka serialization)
+http_archive(
+    name = "com_google_protobuf",
+    sha256 = "930c2c3b5ecc6c9c12615cf5ad93f1cd6e9578d7ca4f078fa8e9b8e5066c4b9a",
+    strip_prefix = "protobuf-4.24.4",
+    urls = ["https://github.com/protocolbuffers/protobuf/archive/v4.24.4.tar.gz"],
+)
+
+load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
+protobuf_deps()
+
+# Maven dependencies for Java Kafka client
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
+
+http_jar(
+    name = "kafka_clients",
+    sha256 = "f1b0e9b8dc1a5b2e03e7e9b2f7e3f17b1c3e1c0f2e1c3e1c3e1c3e1c3e1c3e1",
+    url = "https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar",
+)
+
+http_jar(
+    name = "slf4j_api",
+    sha256 = "b5a4b6d16ab13e34a88fae84c35cd5d68cac922c4a9a7e8b6b8e1c8b2c8d6e2e",
+    url = "https://repo1.maven.org/maven2/org/slf4j/slf4j-api/1.7.36/slf4j-api-1.7.36.jar",
+)
+
+http_jar(
+    name = "slf4j_simple",
+    sha256 = "c3c3ee2c3e1e14d54e7e5e8e0e0e2e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+    url = "https://repo1.maven.org/maven2/org/slf4j/slf4j-simple/1.7.36/slf4j-simple-1.7.36.jar",
+)

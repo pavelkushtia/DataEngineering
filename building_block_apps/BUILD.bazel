@@ -1,0 +1,16 @@
+# Root BUILD file for building block apps
+# This directory contains language-specific examples for each data engineering component
+
+package(default_visibility = ["//visibility:public"])
+
+# Aggregate targets for building all examples
+filegroup(
+    name = "all_examples",
+    srcs = [
+        "//kafka:all_kafka_examples",
+        # Future components will be added here
+        # "//spark:all_spark_examples",
+        # "//flink:all_flink_examples",
+        # "//postgresql:all_postgresql_examples",
+    ],
+)

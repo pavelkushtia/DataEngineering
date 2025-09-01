@@ -1,0 +1,38 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python Kafka Producer
+py_binary(
+    name = "producer",
+    srcs = ["producer.py"],
+    deps = [
+        ":kafka_common",
+    ],
+    main = "producer.py",
+)
+
+# Python Kafka Consumer  
+py_binary(
+    name = "consumer",
+    srcs = ["consumer.py"],
+    deps = [
+        ":kafka_common",
+    ],
+    main = "consumer.py",
+)
+
+# Common Kafka utilities
+py_library(
+    name = "kafka_common",
+    srcs = ["kafka_common.py"],
+)
+
+# Aggregate target
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":producer",
+        ":consumer",
+    ],
+)

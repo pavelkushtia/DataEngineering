@@ -1,0 +1,37 @@
+# Apache Spark Building Block Applications
+# This package provides examples in Python, Java, and C++ for:
+# - Batch processing (ETL, data transformation)
+# - Structured streaming (real-time processing)
+# - SQL queries (SparkSQL)
+
+load("@rules_java//java:defs.bzl", "java_binary")
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# Convenience target to build all Spark examples
+filegroup(
+    name = "all_spark_examples",
+    srcs = [
+        "//spark/python:all_python_examples",
+        "//spark/java:all_java_examples", 
+        "//spark/cpp:all_cpp_examples",
+    ],
+)
+
+# Language-specific collections
+alias(
+    name = "python_examples",
+    actual = "//spark/python:all_python_examples",
+)
+
+alias(
+    name = "java_examples", 
+    actual = "//spark/java:all_java_examples",
+)
+
+alias(
+    name = "cpp_examples",
+    actual = "//spark/cpp:all_cpp_examples",
+)

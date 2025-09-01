@@ -1,0 +1,12 @@
+# Kafka examples in multiple languages
+package(default_visibility = ["//visibility:public"])
+
+# Aggregate target for all Kafka examples
+filegroup(
+    name = "all_kafka_examples",
+    srcs = [
+        "//kafka/python:all_python_examples",
+        "//kafka/java:all_java_examples", 
+        "//kafka/cpp:all_cpp_examples",
+    ],
+)

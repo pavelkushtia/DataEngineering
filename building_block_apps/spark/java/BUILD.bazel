@@ -1,0 +1,84 @@
+# Java Spark Building Block Applications
+
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Common utilities library
+java_library(
+    name = "spark_common",
+    srcs = ["SparkCommon.java"],
+    deps = [
+        "@maven//:org_apache_spark_spark_core_2_12",
+        "@maven//:org_apache_spark_spark_sql_2_12",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
+# Batch processing example
+java_binary(
+    name = "BatchProcessing",
+    srcs = ["BatchProcessing.java"],
+    main_class = "BatchProcessing",
+    deps = [
+        ":spark_common",
+        "@maven//:org_apache_spark_spark_core_2_12",
+        "@maven//:org_apache_spark_spark_sql_2_12",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:com_fasterxml_jackson_core_jackson_core",
+        "@maven//:com_fasterxml_jackson_core_jackson_databind",
+    ],
+)
+
+# Streaming example
+java_binary(
+    name = "Streaming", 
+    srcs = ["Streaming.java"],
+    main_class = "Streaming",
+    deps = [
+        ":spark_common",
+        "@maven//:org_apache_spark_spark_core_2_12",
+        "@maven//:org_apache_spark_spark_sql_2_12",
+        "@maven//:org_apache_spark_spark_sql_kafka_0_10_2_12",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
+# SQL queries example
+java_binary(
+    name = "SqlQueries",
+    srcs = ["SqlQueries.java"], 
+    main_class = "SqlQueries",
+    deps = [
+        ":spark_common",
+        "@maven//:org_apache_spark_spark_core_2_12",
+        "@maven//:org_apache_spark_spark_sql_2_12",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
+# ETL pipeline example
+java_binary(
+    name = "EtlPipeline",
+    srcs = ["EtlPipeline.java"],
+    main_class = "EtlPipeline", 
+    deps = [
+        ":spark_common",
+        "@maven//:org_apache_spark_spark_core_2_12",
+        "@maven//:org_apache_spark_spark_sql_2_12",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:com_fasterxml_jackson_core_jackson_core",
+        "@maven//:com_fasterxml_jackson_core_jackson_databind",
+    ],
+)
+
+# Convenience target for all Java examples
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":BatchProcessing",
+        ":Streaming",
+        ":SqlQueries", 
+        ":EtlPipeline",
+    ],
+)

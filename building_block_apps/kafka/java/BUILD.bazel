@@ -1,0 +1,46 @@
+package(default_visibility = ["//visibility:public"])
+
+# Java Kafka Producer
+java_binary(
+    name = "Producer",
+    srcs = ["Producer.java"],
+    deps = [
+        ":kafka_common",
+        "@kafka_clients//jar",
+        "@slf4j_api//jar",
+        "@slf4j_simple//jar",
+    ],
+    main_class = "Producer",
+)
+
+# Java Kafka Consumer
+java_binary(
+    name = "Consumer", 
+    srcs = ["Consumer.java"],
+    deps = [
+        ":kafka_common",
+        "@kafka_clients//jar",
+        "@slf4j_api//jar",
+        "@slf4j_simple//jar",
+    ],
+    main_class = "Consumer",
+)
+
+# Common Kafka utilities
+java_library(
+    name = "kafka_common",
+    srcs = ["KafkaCommon.java"],
+    deps = [
+        "@kafka_clients//jar",
+        "@slf4j_api//jar",
+    ],
+)
+
+# Aggregate target
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":Producer",
+        ":Consumer",
+    ],
+)

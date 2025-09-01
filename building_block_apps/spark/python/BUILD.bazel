@@ -1,0 +1,59 @@
+# Python Spark Building Block Applications
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Common utilities library
+py_library(
+    name = "spark_common",
+    srcs = ["spark_common.py"],
+    deps = [],
+)
+
+# Batch processing example
+py_binary(
+    name = "batch_processing",
+    srcs = ["batch_processing.py"],
+    main = "batch_processing.py",
+    deps = [":spark_common"],
+    args = [],
+)
+
+# Structured streaming example  
+py_binary(
+    name = "streaming",
+    srcs = ["streaming.py"],
+    main = "streaming.py", 
+    deps = [":spark_common"],
+    args = [],
+)
+
+# SQL queries example
+py_binary(
+    name = "sql_queries",
+    srcs = ["sql_queries.py"],
+    main = "sql_queries.py",
+    deps = [":spark_common"],
+    args = [],
+)
+
+# ETL pipeline example
+py_binary(
+    name = "etl_pipeline",
+    srcs = ["etl_pipeline.py"],
+    main = "etl_pipeline.py",
+    deps = [":spark_common"],
+    args = [],
+)
+
+# Convenience target for all Python examples
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":batch_processing",
+        ":streaming", 
+        ":sql_queries",
+        ":etl_pipeline",
+    ],
+)

@@ -1,0 +1,52 @@
+# C++ Spark Building Block Applications
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Common utilities library
+cc_library(
+    name = "spark_common",
+    srcs = ["spark_common.cpp"],
+    hdrs = ["spark_common.h"],
+    deps = [],
+)
+
+# Batch processing example
+cc_binary(
+    name = "batch_processing",
+    srcs = ["batch_processing.cpp"],
+    deps = [":spark_common"],
+)
+
+# Streaming example
+cc_binary(
+    name = "streaming",
+    srcs = ["streaming.cpp"],
+    deps = [":spark_common"],
+)
+
+# SQL queries example
+cc_binary(
+    name = "sql_queries",
+    srcs = ["sql_queries.cpp"],
+    deps = [":spark_common"],
+)
+
+# ETL pipeline example
+cc_binary(
+    name = "etl_pipeline",
+    srcs = ["etl_pipeline.cpp"],
+    deps = [":spark_common"],
+)
+
+# Convenience target for all C++ examples
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":batch_processing",
+        ":streaming",
+        ":sql_queries",
+        ":etl_pipeline",
+    ],
+)
