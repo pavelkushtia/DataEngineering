@@ -294,7 +294,7 @@ nano /home/trino/trino/etc/catalog/iceberg.properties
 ```properties
 connector.name=iceberg
 hive.metastore.uri=thrift://192.168.1.184:9083
-iceberg.catalog.type=hive
+iceberg.catalog.type=hadoop
 ```
 
 ### Delta Lake connector:
@@ -706,14 +706,27 @@ done
 ## Troubleshooting
 
 ### Common Issues:
-1. **Configuration Property Issues** (Most Common):
-   - **Error**: `Defunct property 'query.max-total-memory-per-node' cannot be configured`
-   - **Cause**: Using Trino 476+ config properties in Trino 435
-   - **Solution**: Remove obsolete properties:
+1. **Iceberg Catalog Configuration Error** (Most Common):
+   - **Error**: `Invalid value 'hive' for type CatalogType (property 'iceberg.catalog.type')`
+   - **Symptoms**: Service exits with code 100, continuous restarts
+   - **Cause**: Trino 435 changed Iceberg catalog type values
+   - **Solution**: Fix Iceberg catalog configuration:
      ```bash
-     sudo su - trino -c "sed -i '/query.max-total-memory-per-node/d' /home/trino/trino/etc/config.properties"
-     sudo su - trino -c "sed -i '/discovery-server.enabled/d' /home/trino/trino/etc/config.properties"
+     sudo su - trino -c "sed -i 's/iceberg.catalog.type=hive/iceberg.catalog.type=hadoop/' /home/trino/trino/etc/catalog/iceberg.properties"
+     sudo systemctl restart trino
      ```
+   - **Alternative**: Temporarily disable problematic catalogs:
+     ```bash
+     sudo su - trino -c "mv /home/trino/trino/etc/catalog/iceberg.properties /home/trino/trino/etc/catalog/iceberg.properties.disabled"
+     ```
+
+2. **Service Crash Loop** (Exit Code 100):
+   - **Symptoms**: `activating (auto-restart) (Result: exit-code)`, restart counter increasing
+   - **Check logs**: `sudo journalctl -u trino.service --no-pager -n 50`
+   - **Common causes**: 
+     - Invalid catalog configuration (see #1)
+     - Missing required properties
+     - Java version compatibility issues
 
 2. **Java Version Compatibility**: 
    - **Trino 435 (this guide)**: Works with Java 17/21
