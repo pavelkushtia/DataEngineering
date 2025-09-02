@@ -1,0 +1,97 @@
+# Redis-PostgreSQL Interaction Examples  
+# Database caching: Redis cache + PostgreSQL backend
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python examples
+py_library(
+    name = "redis_postgresql_common",
+    srcs = ["python/redis_postgresql_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "cached_queries",
+    srcs = ["python/cached_queries.py"],
+    deps = [":redis_postgresql_common"],
+    main = "python/cached_queries.py",
+)
+
+py_binary(
+    name = "cache_manager",
+    srcs = ["python/cache_manager.py"],
+    deps = [":redis_postgresql_common"],
+    main = "python/cache_manager.py",
+)
+
+py_binary(
+    name = "performance_benchmark",
+    srcs = ["python/performance_benchmark.py"],
+    deps = [":redis_postgresql_common"],
+    main = "python/performance_benchmark.py",
+)
+
+# Java examples (structure for future implementation)
+java_library(
+    name = "redis_postgresql_java_common",
+    srcs = ["java/RedisPostgreSQLCommon.java"],
+    deps = [],
+)
+
+java_binary(
+    name = "CachedQueries",
+    srcs = ["java/CachedQueries.java"],
+    deps = [":redis_postgresql_java_common"],
+    main_class = "CachedQueries",
+)
+
+# C++ examples (structure for future implementation) 
+cc_library(
+    name = "redis_postgresql_cpp_common",
+    srcs = ["cpp/redis_postgresql_common.cpp"],
+    hdrs = ["cpp/redis_postgresql_common.h"],
+    deps = [],
+)
+
+cc_binary(
+    name = "cached_queries_cpp",
+    srcs = ["cpp/cached_queries.cpp"],
+    deps = [":redis_postgresql_cpp_common"],
+)
+
+# Convenience targets
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":cached_queries",
+        ":cache_manager", 
+        ":performance_benchmark",
+    ],
+)
+
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":CachedQueries",
+    ],
+)
+
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":cached_queries_cpp",
+    ],
+)
+
+filegroup(
+    name = "all_redis_postgresql_examples",
+    srcs = [
+        ":all_python_examples",
+        ":all_java_examples",
+        ":all_cpp_examples",
+    ],
+)

@@ -9,10 +9,32 @@ Trino will be set up in cluster mode with cpu-node1 as the coordinator and cpu-n
 - **Worker 2**: worker-node3 (192.168.1.190) - Optional additional capacity
 
 ## Prerequisites
-- Java 17 or later (Trino requires Java 17+)
+- Java 17 or later (Java 21 LTS recommended for stability and performance)
+- Python symlink (Ubuntu 24.04+ needs `python-is-python3` package)
 - At least 4GB RAM per node (8GB recommended for coordinator)
 - At least 20GB free disk space per node
 - Network connectivity between all nodes
+
+## Version Note
+This guide uses **Trino 435** which is stable with Java 17/21. For latest Trino versions (476+), you need Java 22+.
+
+### ⚠️ Configuration Compatibility Warning
+**Trino 435 removed several properties** that existed in newer versions:
+- ❌ `query.max-total-memory-per-node` - **REMOVED** (causes startup failure)
+- ❌ `discovery-server.enabled` - **DEPRECATED** (causes warnings)
+
+**Always check Trino release notes** when changing versions!
+
+### 🚨 Port Conflict Warning
+**CRITICAL**: Trino uses different ports to avoid conflicts with other services:
+- **cpu-node1**: Trino coordinator (8084) ✅ - Avoids conflict with Flink JobManager (8081) and Spark Master (8080)
+- **cpu-node2**: Trino worker (8082) ✅ - Avoids conflict with Spark Worker (8081)
+- **worker-node3**: Trino worker (8083) ✅ - Avoids conflict with Spark Worker (8081)
+
+**Port allocation summary for cpu-node1:**
+- Spark Master: 8080
+- Flink JobManager: 8081  
+- Trino Coordinator: 8084
 
 ## Architecture Overview
 ```
@@ -21,24 +43,34 @@ Trino will be set up in cluster mode with cpu-node1 as the coordinator and cpu-n
 │   (Coordinator)     │    │    (Worker 1)       │    │    (Worker 2)       │
 │  - Query Planning   │    │  - Query Execution  │    │  - Query Execution  │
 │  - Client Interface │    │  - Data Processing  │    │  - Data Processing  │
-│  - Web UI (8081)    │    │  - Connectors       │    │  - Connectors       │
+│  - Web UI (8084)    │    │  - Web UI (8082)    │    │  - Web UI (8083)    │
 │  192.168.1.184      │    │  192.168.1.187      │    │  192.168.1.190      │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
-## Step 1: Java 17 Installation (All Nodes)
+## Step 1: Prerequisites Installation (All Nodes)
 
+### Install Java 21:
 ```bash
-# Install OpenJDK 17
+# Install OpenJDK 21 (LTS)
 sudo apt update
-sudo apt install -y openjdk-17-jdk
+sudo apt install -y openjdk-21-jdk
 
 # Verify Java installation
 java -version
 
 # Set JAVA_HOME
-echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
+echo 'export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64' >> ~/.bashrc
 source ~/.bashrc
+```
+
+### Install Python symlink (Ubuntu 24.04+ requirement):
+```bash
+# Trino launcher expects 'python' command but Ubuntu 24.04 only has 'python3'
+sudo apt install -y python-is-python3
+
+# Verify python command works
+python --version  # Should show Python 3.x.x
 ```
 
 ## Step 2: Create Trino User (All Nodes)
@@ -47,6 +79,7 @@ source ~/.bashrc
 # Create trino user
 sudo useradd -m -s /bin/bash trino
 sudo passwd trino
+sudo usermod -aG sudo trino
 ```
 
 ## Step 3: Download and Install Trino (All Nodes)
@@ -56,7 +89,7 @@ sudo passwd trino
 sudo su - trino
 cd /home/trino
 
-# Download latest Trino server
+# Download Trino 435 (stable with Java 17/21)
 wget https://repo1.maven.org/maven2/io/trino/trino-server/435/trino-server-435.tar.gz
 
 # Extract Trino
@@ -97,12 +130,10 @@ nano /home/trino/trino/etc/config.properties
 # Coordinator configuration
 coordinator=true
 node-scheduler.include-coordinator=false
-http-server.http.port=8081
+http-server.http.port=8084
 query.max-memory=8GB
 query.max-memory-per-node=2GB
-query.max-total-memory-per-node=3GB
-discovery-server.enabled=true
-discovery.uri=http://192.168.1.184:8081
+discovery.uri=http://192.168.1.184:8084
 ```
 
 ### Node properties:
@@ -132,9 +163,6 @@ nano /home/trino/trino/etc/jvm.config
 -XX:+ExitOnOutOfMemoryError
 -Djdk.attach.allowAttachSelf=true
 -XX:ReservedCodeCacheSize=512M
--XX:PerMethodRecompilationCutoff=10000
--XX:PerBytecodeRecompilationCutoff=10000
--Djdk.nio.maxCachedBufferSize=2000000
 ```
 
 ### Log configuration:
@@ -159,10 +187,9 @@ nano /home/trino/trino/etc/config.properties
 ```properties
 # Worker configuration
 coordinator=false
-http-server.http.port=8081
+http-server.http.port=8082
 query.max-memory-per-node=2GB
-query.max-total-memory-per-node=3GB
-discovery.uri=http://192.168.1.184:8081
+discovery.uri=http://192.168.1.184:8084
 ```
 
 ### Node properties for cpu-node2:
@@ -184,10 +211,9 @@ nano /home/trino/trino/etc/config.properties
 ```properties
 # Worker configuration
 coordinator=false
-http-server.http.port=8081
+http-server.http.port=8083
 query.max-memory-per-node=2GB
-query.max-total-memory-per-node=3GB
-discovery.uri=http://192.168.1.184:8081
+discovery.uri=http://192.168.1.184:8084
 ```
 
 ### Node properties for worker-node3:
@@ -210,7 +236,7 @@ scp /home/trino/trino/etc/jvm.config trino@192.168.1.190:/home/trino/trino/etc/
 scp /home/trino/trino/etc/log.properties trino@192.168.1.190:/home/trino/trino/etc/
 ```
 
-## Step 7: Configure Connectors (All Nodes)
+## Step 7: Configure Connectors (Execute in cpu-node1 and scp to All Nodes)
 
 ### Create catalog directory:
 ```bash
@@ -248,7 +274,6 @@ nano /home/trino/trino/etc/catalog/memory.properties
 
 ```properties
 connector.name=memory
-memory.max-data-size-per-node=128MB
 ```
 
 ### TPC-H connector (for benchmarking):
@@ -281,6 +306,7 @@ nano /home/trino/trino/etc/catalog/delta.properties
 connector.name=delta-lake
 hive.metastore.uri=thrift://192.168.1.184:9083
 delta.enable-non-concurrent-writes=true
+# Note: Advanced Delta properties may not be available in Trino 435
 ```
 
 ### Copy catalog configurations to workers:
@@ -308,7 +334,7 @@ Type=forking
 User=trino
 Group=trino
 WorkingDirectory=/home/trino/trino
-Environment=JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ExecStart=/home/trino/trino/bin/launcher start
 ExecStop=/home/trino/trino/bin/launcher stop
 Restart=always
@@ -342,7 +368,9 @@ sudo systemctl status trino
 
 ```bash
 # Open required ports
-sudo ufw allow 8081/tcp   # Trino HTTP port
+sudo ufw allow 8084/tcp   # Trino coordinator HTTP port (cpu-node1)
+sudo ufw allow 8082/tcp   # Trino worker HTTP port (cpu-node2) 
+sudo ufw allow 8083/tcp   # Trino worker HTTP port (worker-node3)
 sudo ufw reload
 ```
 
@@ -363,15 +391,18 @@ sudo ln -s /home/trino/trino-cli /usr/local/bin/trino
 ## Step 12: Testing the Cluster
 
 ### Access Trino Web UI:
-Open browser and go to: http://192.168.1.184:8081
+Open browser and access the Trino Web UIs:
+- **Coordinator**: http://192.168.1.184:8084
+- **Worker 1 (cpu-node2)**: http://192.168.1.187:8082  
+- **Worker 2 (worker-node3)**: http://192.168.1.190:8083
 
 ### Test with CLI:
 ```bash
 # Connect to Trino
-./trino-cli --server http://192.168.1.184:8081 --catalog tpch --schema tiny
+./trino-cli --server http://192.168.1.184:8084 --catalog tpch --schema tiny
 
 # Or using the symbolic link
-trino --server http://192.168.1.184:8081 --catalog tpch --schema tiny
+trino --server http://192.168.1.184:8084 --catalog tpch --schema tiny
 ```
 
 ### Run test queries:
@@ -417,36 +448,27 @@ SELECT * FROM your_table_name LIMIT 10;
 nano /home/trino/trino/etc/config.properties
 ```
 
-Add these optimizations:
+Add these Trino 435-compatible optimizations:
 ```properties
-# Query management
+# Basic query management
 query.max-run-time=1h
-query.max-queued-queries=1000
-query.max-concurrent-queries=500
+query.max-queued-queries=100
+query.max-concurrent-queries=50
 
 # Memory management
 query.low-memory-killer.delay=5m
-query.low-memory-killer.policy=total-reservation-on-blocked-nodes
+query.low-memory-killer.policy=total-reservation
 
-# Spilling configuration
+# Basic spilling configuration
 spill-enabled=true
 spiller-spill-path=/home/trino/trino/data/spill
-spiller-max-used-space-threshold=0.9
-spiller-threads=4
 
-# Exchange manager
-exchange.http-client.max-connections=1000
-exchange.http-client.max-connections-per-server=1000
-exchange.http-client.max-requests-queued-per-destination=1000
-
-# Task management
-task.concurrency=16
-task.http-response-threads=100
-task.http-timeout-threads=3
+# Task management (conservative settings for Trino 435)
+task.concurrency=8
+task.http-response-threads=50
 task.info-update-interval=3s
 task.max-partial-aggregation-memory=16MB
-task.max-worker-threads=200
-task.min-drivers=task.concurrency * 2
+task.max-worker-threads=100
 ```
 
 ### Worker-specific tuning:
@@ -661,8 +683,8 @@ find /home/trino/trino/data/spill -type f -mtime +1 -delete
 ```bash
 #!/bin/bash
 # Health check script
-COORDINATOR="192.168.1.184:8081"
-WORKERS=("192.168.1.187:8081" "192.168.1.190:8081")
+COORDINATOR="192.168.1.184:8084"
+WORKERS=("192.168.1.187:8082" "192.168.1.190:8083")
 
 # Check coordinator
 if curl -f -s http://$COORDINATOR/v1/info > /dev/null; then
@@ -684,10 +706,35 @@ done
 ## Troubleshooting
 
 ### Common Issues:
-1. **OutOfMemoryError**: Increase JVM heap size in jvm.config
-2. **Connection refused**: Check firewall and network connectivity
-3. **Metastore connection errors**: Verify Hive Metastore setup
-4. **Slow queries**: Check query plans and add appropriate connectors
+1. **Configuration Property Issues** (Most Common):
+   - **Error**: `Defunct property 'query.max-total-memory-per-node' cannot be configured`
+   - **Cause**: Using Trino 476+ config properties in Trino 435
+   - **Solution**: Remove obsolete properties:
+     ```bash
+     sudo su - trino -c "sed -i '/query.max-total-memory-per-node/d' /home/trino/trino/etc/config.properties"
+     sudo su - trino -c "sed -i '/discovery-server.enabled/d' /home/trino/trino/etc/config.properties"
+     ```
+
+2. **Java Version Compatibility**: 
+   - **Trino 435 (this guide)**: Works with Java 17/21
+   - **Trino 476+**: Requires Java 22+
+   - If you get "Java version not supported" errors, check: `java -version`
+   - **Solution**: Ensure Java 17+ is installed: `sudo apt install openjdk-21-jdk`
+
+3. **OutOfMemoryError**: Increase JVM heap size in jvm.config
+
+4. **Connection refused**: Check firewall and network connectivity
+
+5. **Metastore connection errors**: Verify Hive Metastore setup
+
+6. **Slow queries**: Check query plans and add appropriate connectors
+
+7. **Python Command Not Found**:
+   - **Error**: `/usr/bin/env: 'python': No such file or directory`
+   - **Cause**: Ubuntu 24.04+ doesn't create python → python3 symlink by default
+   - **Solution**: `sudo apt install -y python-is-python3`
+
+8. **Service fails to start**: Check `journalctl -xeu trino.service` for detailed errors
 
 ### Debug commands:
 ```bash
@@ -695,10 +742,10 @@ done
 tail -f /home/trino/trino/var/log/server.log
 
 # Check if port is listening
-netstat -tlnp | grep 8081
+netstat -tlnp | grep 8084
 
 # Test network connectivity
-telnet 192.168.1.184 8081
+telnet 192.168.1.184 8084
 
 # Check Java processes
 jps | grep -i trino
@@ -714,3 +761,31 @@ SELECT * FROM system.runtime.queries WHERE query = 'your-query-here';
 ```
 
 This comprehensive Trino setup provides a scalable, distributed query engine that can federate queries across multiple data sources including PostgreSQL, Kafka, Iceberg, and Delta Lake tables.
+
+## Upgrading to Newer Trino Versions
+
+If you want to upgrade to Trino 476+ later for latest features:
+
+### Prerequisites for Trino 476+:
+1. **Java 22+**: Install from Adoptium/Eclipse Temurin
+2. **Configuration Updates**: Review release notes for breaking changes
+3. **Testing**: Test in staging environment first
+
+### Safe upgrade path:
+```bash
+# 1. Backup current setup
+sudo systemctl stop trino
+tar -czf trino-435-backup-$(date +%Y%m%d).tar.gz /home/trino/
+
+# 2. Install Java 22 (if needed)
+# Follow Adoptium installation instructions
+
+# 3. Download newer Trino version
+# Update configuration properties per release notes
+
+# 4. Test and validate
+```
+
+### Version comparison:
+- **Trino 435**: Stable, Java 17/21, fewer features
+- **Trino 476+**: Latest features, Java 22+, more complex setup

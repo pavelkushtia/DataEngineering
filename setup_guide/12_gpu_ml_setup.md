@@ -137,7 +137,7 @@ pip install requests urllib3 tqdm
 # Activate ML environment
 source ml-env/bin/activate
 
-# Install TensorFlow GPU
+# Install TensorFlow GPU 
 pip install tensorflow[and-cuda]==2.13.0
 
 # Install additional TensorFlow tools
@@ -310,7 +310,7 @@ sudo apt install -y openjdk-11-jdk
 echo 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64' >> ~/.bashrc
 source ~/.bashrc
 
-# Download and install Spark
+# Download and install Spark (keeping compatible version)
 cd /home/$(whoami)
 wget https://dlcdn.apache.org/spark/spark-3.5.6/spark-3.5.6-bin-hadoop3.tgz
 tar -xzf spark-3.5.6-bin-hadoop3.tgz
@@ -331,7 +331,7 @@ source ml-env/bin/activate
 pip install cudf-cu11 cuml-cu11 cugraph-cu11 cuspatial-cu11 cupy-cuda11x
 pip install rapids-dependency-file-generator
 
-# Install PySpark
+# Install PySpark (compatible with Spark 3.5.6)
 pip install pyspark==3.5.0
 
 # Install XGBoost with GPU support

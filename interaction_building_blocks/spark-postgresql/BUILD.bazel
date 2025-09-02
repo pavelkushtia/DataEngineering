@@ -1,0 +1,97 @@
+# Spark-PostgreSQL Interaction Examples
+# ETL pipeline: Spark data processing → PostgreSQL storage
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python examples
+py_library(
+    name = "spark_postgresql_common",
+    srcs = ["python/spark_postgresql_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "etl_pipeline",
+    srcs = ["python/etl_pipeline.py"],
+    deps = [":spark_postgresql_common"],
+    main = "python/etl_pipeline.py",
+)
+
+py_binary(
+    name = "incremental_loader",
+    srcs = ["python/incremental_loader.py"],
+    deps = [":spark_postgresql_common"],
+    main = "python/incremental_loader.py",
+)
+
+py_binary(
+    name = "batch_analytics",
+    srcs = ["python/batch_analytics.py"],
+    deps = [":spark_postgresql_common"],
+    main = "python/batch_analytics.py",
+)
+
+# Java examples (structure for future implementation)
+java_library(
+    name = "spark_postgresql_java_common",
+    srcs = ["java/SparkPostgreSQLCommon.java"],
+    deps = [],
+)
+
+java_binary(
+    name = "ETLPipeline",
+    srcs = ["java/ETLPipeline.java"],
+    deps = [":spark_postgresql_java_common"],
+    main_class = "ETLPipeline",
+)
+
+# C++ examples (structure for future implementation)
+cc_library(
+    name = "spark_postgresql_cpp_common",
+    srcs = ["cpp/spark_postgresql_common.cpp"],
+    hdrs = ["cpp/spark_postgresql_common.h"],
+    deps = [],
+)
+
+cc_binary(
+    name = "etl_pipeline_cpp",
+    srcs = ["cpp/etl_pipeline.cpp"],
+    deps = [":spark_postgresql_cpp_common"],
+)
+
+# Convenience targets
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":etl_pipeline",
+        ":incremental_loader",
+        ":batch_analytics",
+    ],
+)
+
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":ETLPipeline",
+    ],
+)
+
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":etl_pipeline_cpp",
+    ],
+)
+
+filegroup(
+    name = "all_spark_postgresql_examples",
+    srcs = [
+        ":all_python_examples",
+        ":all_java_examples",
+        ":all_cpp_examples",
+    ],
+)

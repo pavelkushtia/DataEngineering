@@ -18,10 +18,11 @@ The building blocks serve as the foundation for the advanced application ideas d
 ```
 building_block_apps/
 ├── kafka/           ← Kafka producers/consumers in Python, Java, C++
-├── spark/           ← Spark applications (future)
-├── flink/           ← Flink streaming jobs (future)
-├── postgresql/      ← Database clients and utilities (future)
-├── trino/           ← Query engine clients (future)
+├── spark/           ← Spark batch processing and streaming (complete)
+├── flink/           ← Flink streaming jobs and analytics (complete)
+├── postgresql/      ← Database operations and advanced queries (complete)
+├── trino/           ← Federated queries and performance analysis (complete)
+├── redis/           ← Caching, pub/sub, and Redis operations (complete)
 └── integration/     ← Multi-component examples (future)
 ```
 
@@ -36,10 +37,10 @@ sudo apt update
 sudo apt install bazel
 
 # Install language-specific dependencies
-sudo apt install python3-pip default-jdk librdkafka-dev
+sudo apt install python3-pip default-jdk librdkafka-dev postgresql-client
 
-# Install Python Kafka client
-pip install kafka-python
+# Install Python libraries for all components
+pip install kafka-python psycopg2-binary redis hiredis trino requests
 ```
 
 ### **Build Everything**
@@ -50,14 +51,23 @@ bazel build //...
 
 ### **Run Examples**
 ```bash
-# Python Kafka Producer
+# Kafka: Python Producer
 bazel run //kafka/python:producer -- --topic test-topic --count 100
 
-# Java Kafka Consumer  
-bazel run //kafka/java:Consumer -- --topic test-topic --group my-group
+# Spark: Batch Processing
+bazel run //spark/python:batch_processing -- --records 10000 --master spark://192.168.1.184:7077
 
-# C++ Kafka Producer
-bazel run //kafka/cpp:producer -- --topic test-topic --rate 5.0
+# Flink: Streaming Analytics
+bazel run //flink/python:streaming_analytics -- --kafka-topic events --duration 60
+
+# PostgreSQL: Basic Database Operations
+bazel run //postgresql/python:basic_operations -- --create-tables --insert-data
+
+# Trino: Federated Queries
+bazel run //trino/python:federated_queries -- --include-all
+
+# Redis: Basic Caching
+bazel run //redis/python:basic_caching -- --operations all
 ```
 
 ---
@@ -198,25 +208,176 @@ checkpoint.dir=/tmp/spark-checkpoints
 - **Java**: Production robustness, type safety, enterprise integration  
 - **C++**: High-performance data generation, system integration, Spark job orchestration
 
+### ✅ **Flink (Complete)**
+
+**Languages**: Python, Java, C++  
+**Build Targets**: `//flink/python:*`, `//flink/java:*`, `//flink/cpp:*`
+
+#### **Features**
+- **DataStream API**: Low-level streaming processing with stateful operations
+- **Table API/SQL**: High-level streaming analytics and complex queries
+- **CEP (Complex Event Processing)**: Pattern detection and event correlations  
+- **Windowing**: Tumbling, sliding, and session windows with watermarks
+- **State Management**: Checkpoint/savepoint support and fault tolerance
+- **Connectors**: Kafka, PostgreSQL, Elasticsearch integration
+
+#### **Quick Examples**
+
+**Streaming Analytics (Python)**:
+```bash
+# Real-time event processing with windowing
+bazel run //flink/python:streaming_analytics -- \
+    --kafka-topic user-events \
+    --duration 300 \
+    --parallelism 4
+```
+
+**Windowing Aggregations (Java)**:
+```bash
+# Tumbling window aggregations
+bazel run //flink/java:StreamingAnalytics -- \
+    --window-size 60 \
+    --kafka-topic metrics
+```
+
+**SQL Streaming (Python)**:
+```bash
+# SQL-based stream processing
+bazel run //flink/python:sql_streaming -- \
+    --query-type aggregation \
+    --duration 180
+```
+
+---
+
+### ✅ **PostgreSQL (Complete)**
+
+**Languages**: Python, Java, C++  
+**Build Targets**: `//postgresql/python:*`, `//postgresql/java:*`, `//postgresql/cpp:*`
+
+#### **Features**
+- **CRUD Operations**: Comprehensive database operations with transactions
+- **Advanced Queries**: Window functions, CTEs, JSON operations, complex joins
+- **Connection Pooling**: Production-ready connection management
+- **Data Types**: JSON/JSONB, arrays, custom types, and PostgreSQL extensions
+- **Performance Monitoring**: Query analysis and optimization techniques
+- **Bulk Operations**: Efficient batch processing and data import/export
+
+#### **Quick Examples**
+
+**Basic Operations (Python)**:
+```bash
+# Complete CRUD operations with sample data
+bazel run //postgresql/python:basic_operations -- \
+    --create-tables --insert-data \
+    --operations all
+```
+
+**Advanced Queries (Python)**:
+```bash
+# Complex analytical queries and window functions
+bazel run //postgresql/python:advanced_queries -- \
+    --include-analytics --include-json
+```
+
+**Connection Management (Java)**:
+```bash
+# Connection pooling and performance testing
+bazel run //postgresql/java:AdvancedQueries -- \
+    --pool-size 10 --benchmark
+```
+
+---
+
+### ✅ **Trino (Complete)**
+
+**Languages**: Python, Java, C++  
+**Build Targets**: `//trino/python:*`, `//trino/java:*`, `//trino/cpp:*`
+
+#### **Features**
+- **Federated Queries**: Cross-system analytics (PostgreSQL + Kafka + Iceberg + Delta Lake)
+- **Connector Usage**: Native integration with all your data sources
+- **Performance Analysis**: Query optimization and cluster monitoring
+- **Advanced Analytics**: Window functions, CTEs, statistical analysis
+- **Interactive Queries**: Sub-second response times for exploration
+- **Cost-Based Optimization**: Smart query planning across different systems
+
+#### **Quick Examples**
+
+**Basic Queries (Python)**:
+```bash
+# Explore catalogs and basic SQL operations
+bazel run //trino/python:basic_queries -- \
+    --catalog postgresql --schema public
+```
+
+**Federated Queries (Python)**:
+```bash
+# Cross-system joins and analytics
+bazel run //trino/python:federated_queries -- \
+    --include-all
+```
+
+**Performance Analysis (Python)**:
+```bash
+# Cluster monitoring and query optimization
+bazel run //trino/python:performance_analysis -- \
+    --include-benchmark --threads 4
+```
+
+---
+
+### ✅ **Redis (Complete)**
+
+**Languages**: Python, Java, C++  
+**Build Targets**: `//redis/python:*`, `//redis/java:*`, `//redis/cpp:*`
+
+#### **Features**
+- **Caching Operations**: High-performance key-value operations with TTL
+- **Data Structures**: Strings, hashes, lists, sets, sorted sets, and streams
+- **Pub/Sub Messaging**: Real-time messaging and event distribution
+- **Advanced Operations**: Lua scripting, transactions, and pipelining
+- **Performance Monitoring**: Benchmarking and optimization techniques
+- **Connection Pooling**: Efficient connection management
+
+#### **Quick Examples**
+
+**Basic Caching (Python)**:
+```bash
+# Key-value operations and TTL management
+bazel run //redis/python:basic_caching -- \
+    --operations all --benchmark
+```
+
+**Advanced Operations (Python)**:
+```bash
+# Data structures and complex operations
+bazel run //redis/python:advanced_operations -- \
+    --include-all --duration 120
+```
+
+**Pub/Sub Messaging (Python)**:
+```bash
+# Real-time messaging demonstration
+bazel run //redis/python:pubsub_messaging -- \
+    --channels events,notifications --duration 60
+```
+
+---
+
 ### 🔜 **Planned Components**
 
-#### **Flink** (Coming Soon)
-- **DataStream API**: Low-level streaming processing
-- **Table API/SQL**: High-level streaming analytics
-- **CEP (Complex Event Processing)**: Pattern detection
-- **Connectors**: Kafka, PostgreSQL, Elasticsearch
+#### **Neo4j** (Coming Soon)
+- **Graph Operations**: Node and relationship management
+- **Cypher Queries**: Complex graph traversal and pattern matching
+- **Graph Analytics**: PageRank, community detection, shortest paths
+- **Data Import**: Bulk loading and graph construction
 
-#### **PostgreSQL** (Coming Soon)
-- **CRUD Operations**: Basic database operations
-- **Advanced Queries**: Window functions, CTEs, JSON operations
-- **Connection Pooling**: Production-ready connection management
-- **Change Data Capture**: Logical replication clients
-
-#### **Trino** (Coming Soon)
-- **Federated Queries**: Cross-system query examples  
-- **Connector Usage**: Kafka, Delta Lake, Iceberg
-- **Performance Optimization**: Query tuning and analysis
-- **Custom Functions**: UDFs and aggregates
+#### **Elasticsearch** (Coming Soon)
+- **Document Indexing**: Full-text search and document operations
+- **Complex Queries**: Aggregations, filters, and search analytics
+- **Real-time Search**: Live indexing and search capabilities
+- **Performance Tuning**: Index optimization and query analysis
 
 ---
 
@@ -232,22 +393,29 @@ checkpoint.dir=/tmp/spark-checkpoints
 ### **Common Build Commands**
 
 ```bash
-# Build all Kafka examples
+# Build all examples for a component
 bazel build //kafka:all_kafka_examples
+bazel build //spark:all_spark_examples
+bazel build //flink:all_flink_examples
+bazel build //postgresql:all_postgresql_examples
+bazel build //trino:all_trino_examples
+bazel build //redis:all_redis_examples
 
-# Build specific language
+# Build specific language for a component
 bazel build //kafka/python:all_python_examples
-bazel build //kafka/java:all_java_examples  
-bazel build //kafka/cpp:all_cpp_examples
+bazel build //spark/java:all_java_examples  
+bazel build //flink/cpp:all_cpp_examples
 
 # Run with arguments
 bazel run //kafka/python:producer -- --help
+bazel run //trino/python:basic_queries -- --help
 
 # Clean build artifacts
 bazel clean
 
 # Test (when tests are added)
 bazel test //kafka/...
+bazel test //postgresql/...
 ```
 
 ### **Development Workflow**
@@ -291,26 +459,78 @@ bazel run //kafka/python:consumer -- --topic integration-test --timeout 30
 
 ## 🔧 **Configuration**
 
-### **Kafka Cluster Configuration**
-Examples are pre-configured for the distributed Kafka setup from [`02_kafka_distributed_setup.md`](../setup_guide/02_kafka_distributed_setup.md):
+### **Cluster Configuration**
+Examples are pre-configured for your distributed cluster setup:
 
+#### **Kafka Configuration**
+From [`02_kafka_distributed_setup.md`](../setup_guide/02_kafka_distributed_setup.md):
 ```properties
 # Bootstrap servers
 192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092
-
 # Default topic
 building-blocks-demo
-
 # Consumer group
 building-blocks-consumer-group
 ```
 
-### **Customizing Configuration**
-Each language provides configuration utilities:
+#### **Spark Configuration** 
+From [`03_spark_cluster_setup.md`](../setup_guide/03_spark_cluster_setup.md):
+```properties
+# Master URL
+spark.master=spark://192.168.1.184:7077
+# Resource allocation
+spark.executor.memory=2g
+spark.executor.cores=2
+```
 
-**Python**: `kafka_common.py` - `get_kafka_config()`  
-**Java**: `KafkaCommon.java` - `getProducerConfig()`, `getConsumerConfig()`  
-**C++**: `kafka_common.h` - `KafkaConfig::getProducerConfig()`
+#### **Flink Configuration**
+From [`04_flink_cluster_setup.md`](../setup_guide/04_flink_cluster_setup.md):
+```properties
+# JobManager
+jobmanager.rpc.address=192.168.1.184
+jobmanager.rpc.port=6123
+# Web UI
+rest.address=192.168.1.184
+rest.port=8081
+```
+
+#### **PostgreSQL Configuration**
+From [`01_postgresql_setup.md`](../setup_guide/01_postgresql_setup.md):
+```properties
+# Connection settings
+host=192.168.1.184
+port=5432
+database=analytics_db
+user=dataeng
+```
+
+#### **Trino Configuration**
+From [`05_trino_cluster_setup.md`](../setup_guide/05_trino_cluster_setup.md):
+```properties
+# Coordinator
+coordinator.host=192.168.1.184
+coordinator.port=8084
+# Catalogs: postgresql, kafka, memory, tpch
+```
+
+#### **Redis Configuration**
+From [`10_redis_setup.md`](../setup_guide/10_redis_setup.md):
+```properties
+# Redis server
+host=192.168.1.184
+port=6379
+# Database selection (0-15)
+```
+
+### **Customizing Configuration**
+Each component provides configuration utilities in all languages:
+
+**Kafka**: `kafka_common.py/java/cpp` - Connection and producer/consumer configs  
+**Spark**: `spark_common.py/java/cpp` - Cluster and application configs  
+**Flink**: `flink_common.py/java/cpp` - Job and cluster configurations  
+**PostgreSQL**: `postgresql_common.py/java/cpp` - Database connection pooling  
+**Trino**: `trino_common.py/java/cpp` - Catalog and query configurations  
+**Redis**: `redis_common.py/java/cpp` - Connection pooling and cache settings
 
 ### **Environment-Specific Settings**
 ```bash
@@ -327,15 +547,33 @@ bazel run //kafka/python:producer
 ## 🧪 **Testing & Validation**
 
 ### **End-to-End Testing**
+
+#### **Multi-Component Integration**
 ```bash
-# Terminal 1: Start consumer
-bazel run //kafka/java:Consumer -- --topic e2e-test --group test-group
+# Terminal 1: Start Kafka producer
+bazel run //kafka/python:producer -- --topic integration-test --count 1000 --rate 10
 
-# Terminal 2: Send messages  
-bazel run //kafka/python:producer -- --topic e2e-test --count 50 --rate 2
+# Terminal 2: Process with Flink  
+bazel run //flink/python:streaming_analytics -- --kafka-topic integration-test --duration 120
 
-# Terminal 3: Monitor with C++ consumer
-bazel run //kafka/cpp:consumer -- --topic e2e-test --group monitor-group --timeout 60
+# Terminal 3: Query with Trino
+bazel run //trino/python:federated_queries -- --include-kafka
+
+# Terminal 4: Cache results in Redis
+bazel run //redis/python:advanced_operations -- --cache-results --ttl 300
+```
+
+#### **Single Component Testing**
+```bash
+# Kafka testing
+bazel run //kafka/java:Consumer -- --topic test --group test-group
+bazel run //kafka/python:producer -- --topic test --count 100
+
+# PostgreSQL testing
+bazel run //postgresql/python:basic_operations -- --create-tables --operations all
+
+# Redis testing
+bazel run //redis/python:basic_caching -- --benchmark --operations all
 ```
 
 ### **Performance Testing**
@@ -362,17 +600,19 @@ bazel run //kafka/python:producer -- --topic test --count 100
 
 ## 🚀 **Future Roadmap**
 
-### **Phase 1: Core Components** (Next 2-3 months)
+### **Phase 1: Core Components** ✅ **COMPLETED**
 - ✅ Kafka (Complete)
-- 🔄 Spark (In Progress)
-- 🔄 Flink (In Progress)  
-- 🔄 PostgreSQL (In Progress)
+- ✅ Spark (Complete)
+- ✅ Flink (Complete)  
+- ✅ PostgreSQL (Complete)
+- ✅ Trino (Complete)
+- ✅ Redis (Complete)
 
-### **Phase 2: Advanced Components** (3-6 months)
-- Trino query engine
-- Redis caching
+### **Phase 2: Advanced Components** (Next 3-6 months)
 - Neo4j graph database
+- Elasticsearch search engine
 - TimescaleDB time series
+- Apache Airflow workflows
 
 ### **Phase 3: Integration Examples** (6-12 months)
 - Multi-component pipelines

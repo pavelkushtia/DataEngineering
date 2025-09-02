@@ -74,13 +74,13 @@ ssh flink@192.168.1.190 "hostname"
 sudo su - flink
 cd /home/flink
 
-# Download Flink
-wget https://downloads.apache.org/flink/flink-1.18.0/flink-1.18.0-bin-scala_2.12.tgz
+# Download Flink 1.19.3 (stable version)
+wget https://downloads.apache.org/flink/flink-1.19.3/flink-1.19.3-bin-scala_2.12.tgz
 
 # Extract and setup
-tar -xzf flink-1.18.0-bin-scala_2.12.tgz
-mv flink-1.18.0 flink
-rm flink-1.18.0-bin-scala_2.12.tgz
+tar -xzf flink-1.19.3-bin-scala_2.12.tgz
+mv flink-1.19.3 flink
+rm flink-1.19.3-bin-scala_2.12.tgz
 
 # Add Flink to PATH
 echo 'export FLINK_HOME=/home/flink/flink' >> ~/.bashrc
@@ -285,21 +285,27 @@ ssh flink@192.168.1.190 "mkdir -p $FLINK_HOME/{ha-storage,checkpoints,savepoints
 ```bash
 cd $FLINK_HOME/lib
 
-# Kafka SQL connector
-wget https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.18.0/flink-sql-connector-kafka-1.18.0.jar
+# Kafka SQL connector (compatible with Flink 1.19.x)
+wget https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.3.0-1.19/flink-sql-connector-kafka-3.3.0-1.19.jar
 
-# PostgreSQL JDBC connector
-wget https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.1-1.18/flink-connector-jdbc-3.1.1-1.18.jar
+# PostgreSQL JDBC connector (compatible with Flink 1.19.x)
+wget https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.3.0-1.19/flink-connector-jdbc-3.3.0-1.19.jar
 wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar
 
 # PostgreSQL CDC connector (for real-time change data capture)
-wget https://repo1.maven.org/maven2/com/ververica/flink-connector-postgres-cdc/2.4.2/flink-connector-postgres-cdc-2.4.2.jar
+wget https://repo1.maven.org/maven2/com/ververica/flink-connector-postgres-cdc/3.0.1/flink-connector-postgres-cdc-3.0.1.jar
 
-# Elasticsearch connector
-wget https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-elasticsearch7/3.0.1-1.18/flink-sql-connector-elasticsearch7-3.0.1-1.18.jar
+# Elasticsearch connector (compatible with Flink 1.19.x)
+wget https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-elasticsearch7/3.1.0-1.19/flink-sql-connector-elasticsearch7-3.1.0-1.19.jar
 
-# Hadoop filesystem support
+# Hadoop filesystem support (for basic file I/O)
 wget https://repo1.maven.org/maven2/org/apache/flink/flink-shaded-hadoop-2-uber/2.8.3-10.0/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar
+
+# Iceberg connector (for Iceberg table format)
+wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-flink-runtime-1.19/1.9.2/iceberg-flink-runtime-1.19-1.9.2.jar
+
+# Delta Lake connector (for Delta Lake table format)
+wget https://repo1.maven.org/maven2/io/delta/delta-flink/3.3.2/delta-flink-3.3.2.jar
 
 # Copy JARs to all nodes
 scp *.jar flink@192.168.1.187:$FLINK_HOME/lib/

@@ -1,0 +1,113 @@
+# Kafka-Flink Interaction Examples
+# Stream processing pipeline: Kafka topics → Flink DataStream processing
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python examples
+py_library(
+    name = "kafka_flink_common",
+    srcs = ["python/kafka_flink_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "stream_processor",
+    srcs = ["python/stream_processor.py"],
+    deps = [":kafka_flink_common"],
+    main = "python/stream_processor.py",
+)
+
+py_binary(
+    name = "windowing_analytics",
+    srcs = ["python/windowing_analytics.py"],
+    deps = [":kafka_flink_common"],
+    main = "python/windowing_analytics.py",
+)
+
+py_binary(
+    name = "stateful_processor",
+    srcs = ["python/stateful_processor.py"],
+    deps = [":kafka_flink_common"],
+    main = "python/stateful_processor.py",
+)
+
+py_binary(
+    name = "pattern_detector",
+    srcs = ["python/pattern_detector.py"],
+    deps = [":kafka_flink_common"],
+    main = "python/pattern_detector.py",
+)
+
+# Java examples (structure for future implementation)
+java_library(
+    name = "kafka_flink_java_common",
+    srcs = ["java/KafkaFlinkCommon.java"],
+    deps = [],
+)
+
+java_binary(
+    name = "StreamProcessor",
+    srcs = ["java/StreamProcessor.java"],
+    deps = [":kafka_flink_java_common"],
+    main_class = "StreamProcessor",
+)
+
+java_binary(
+    name = "PatternDetector",
+    srcs = ["java/PatternDetector.java"],
+    deps = [":kafka_flink_java_common"],
+    main_class = "PatternDetector",
+)
+
+# C++ examples (structure for future implementation)
+cc_library(
+    name = "kafka_flink_cpp_common",
+    srcs = ["cpp/kafka_flink_common.cpp"],
+    hdrs = ["cpp/kafka_flink_common.h"],
+    deps = [],
+)
+
+cc_binary(
+    name = "stream_processor_cpp",
+    srcs = ["cpp/stream_processor.cpp"],
+    deps = [":kafka_flink_cpp_common"],
+)
+
+# Convenience targets
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":stream_processor",
+        ":windowing_analytics",
+        ":stateful_processor", 
+        ":pattern_detector",
+    ],
+)
+
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":StreamProcessor",
+        ":PatternDetector",
+    ],
+)
+
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":stream_processor_cpp",
+    ],
+)
+
+filegroup(
+    name = "all_kafka_flink_examples",
+    srcs = [
+        ":all_python_examples",
+        ":all_java_examples",
+        ":all_cpp_examples",
+    ],
+)

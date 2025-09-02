@@ -1,0 +1,24 @@
+# Trino-PostgreSQL Interaction Examples
+# Federated queries across catalogs
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "trino_postgresql_common",
+    srcs = ["python/trino_postgresql_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "federated_analytics",
+    srcs = ["python/federated_analytics.py"],
+    deps = [":trino_postgresql_common"],
+    main = "python/federated_analytics.py",
+)
+
+filegroup(name = "all_python_examples", srcs = [":federated_analytics"])
+filegroup(name = "all_java_examples", srcs = [])
+filegroup(name = "all_cpp_examples", srcs = [])
+filegroup(name = "all_trino_postgresql_examples", srcs = [":all_python_examples"])

@@ -1,0 +1,18 @@
+# trino-postgresql Python Examples
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "trino_postgresql_common",
+    srcs = ["trino_postgresql_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "integration_example",
+    srcs = ["integration_example.py"],
+    deps = [":trino_postgresql_common"],
+    main = "integration_example.py",
+)

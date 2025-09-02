@@ -1,0 +1,105 @@
+# Redis Building Block Applications
+# Demonstrates caching, pub/sub, and advanced Redis operations
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python examples
+py_library(
+    name = "redis_python_common",
+    srcs = ["python/redis_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "basic_caching",
+    srcs = ["python/basic_caching.py"],
+    deps = [":redis_python_common"],
+    main = "python/basic_caching.py",
+)
+
+py_binary(
+    name = "advanced_operations",
+    srcs = ["python/advanced_operations.py"],
+    deps = [":redis_python_common"],
+    main = "python/advanced_operations.py",
+)
+
+py_binary(
+    name = "pubsub_messaging",
+    srcs = ["python/pubsub_messaging.py"],
+    deps = [":redis_python_common"],
+    main = "python/pubsub_messaging.py",
+)
+
+# Java examples
+java_library(
+    name = "redis_java_common",
+    srcs = ["java/RedisCommon.java"],
+    deps = [],
+)
+
+java_binary(
+    name = "BasicCaching",
+    srcs = ["java/BasicCaching.java"],
+    deps = [":redis_java_common"],
+    main_class = "BasicCaching",
+)
+
+java_binary(
+    name = "AdvancedOperations",
+    srcs = ["java/AdvancedOperations.java"],
+    deps = [":redis_java_common"],
+    main_class = "AdvancedOperations",
+)
+
+# C++ examples
+cc_library(
+    name = "redis_cpp_common",
+    srcs = ["cpp/redis_common.cpp"],
+    hdrs = ["cpp/redis_common.h"],
+    deps = [],
+)
+
+cc_binary(
+    name = "basic_caching_cpp",
+    srcs = ["cpp/basic_caching.cpp"],
+    deps = [":redis_cpp_common"],
+)
+
+# Convenience targets
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":basic_caching",
+        ":advanced_operations",
+        ":pubsub_messaging",
+    ],
+)
+
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":BasicCaching",
+        ":AdvancedOperations",
+    ],
+)
+
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":basic_caching_cpp",
+    ],
+)
+
+filegroup(
+    name = "all_redis_examples",
+    srcs = [
+        ":all_python_examples",
+        ":all_java_examples",
+        ":all_cpp_examples",
+    ],
+)

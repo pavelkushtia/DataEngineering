@@ -1,0 +1,70 @@
+# Interaction Building Blocks - Root Build File
+# Integration examples between data engineering components
+
+package(default_visibility = ["//visibility:public"])
+
+# Meta-targets for building all interactions
+filegroup(
+    name = "all_interaction_examples",
+    srcs = [
+        "//kafka-flink:all_kafka_flink_examples",
+        "//kafka-spark:all_kafka_spark_examples", 
+        "//spark-postgresql:all_spark_postgresql_examples",
+        "//flink-postgresql:all_flink_postgresql_examples",
+        "//redis-postgresql:all_redis_postgresql_examples",
+        "//trino-postgresql:all_trino_postgresql_examples",
+        "//kafka-trino:all_kafka_trino_examples",
+        "//spark-redis:all_spark_redis_examples",
+        "//flink-redis:all_flink_redis_examples",
+        "//kafka-redis:all_kafka_redis_examples",
+    ],
+)
+
+# Language-specific meta-targets
+filegroup(
+    name = "all_python_interactions",
+    srcs = [
+        "//kafka-flink:all_python_examples",
+        "//kafka-spark:all_python_examples",
+        "//spark-postgresql:all_python_examples", 
+        "//flink-postgresql:all_python_examples",
+        "//redis-postgresql:all_python_examples",
+        "//trino-postgresql:all_python_examples",
+        "//kafka-trino:all_python_examples",
+        "//spark-redis:all_python_examples", 
+        "//flink-redis:all_python_examples",
+        "//kafka-redis:all_python_examples",
+    ],
+)
+
+filegroup(
+    name = "all_java_interactions",
+    srcs = [
+        "//kafka-flink:all_java_examples",
+        "//kafka-spark:all_java_examples",
+        "//spark-postgresql:all_java_examples",
+        "//flink-postgresql:all_java_examples", 
+        "//redis-postgresql:all_java_examples",
+        "//trino-postgresql:all_java_examples",
+        "//kafka-trino:all_java_examples",
+        "//spark-redis:all_java_examples",
+        "//flink-redis:all_java_examples",
+        "//kafka-redis:all_java_examples",
+    ],
+)
+
+filegroup(
+    name = "all_cpp_interactions",
+    srcs = [
+        "//kafka-flink:all_cpp_examples",
+        "//kafka-spark:all_cpp_examples",
+        "//spark-postgresql:all_cpp_examples",
+        "//flink-postgresql:all_cpp_examples",
+        "//redis-postgresql:all_cpp_examples",
+        "//trino-postgresql:all_cpp_examples", 
+        "//kafka-trino:all_cpp_examples",
+        "//spark-redis:all_cpp_examples",
+        "//flink-redis:all_cpp_examples",
+        "//kafka-redis:all_cpp_examples",
+    ],
+)

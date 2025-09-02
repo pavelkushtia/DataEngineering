@@ -27,32 +27,91 @@ import sys
 import time
 from datetime import datetime, timedelta
 from spark_common import (
-    SparkConfig, create_spark_session, generate_sample_data,
-    monitor_job_progress, cleanup_session, print_dataframe_summary,
-    parse_common_args, handle_errors
+    SparkConfig,
+    create_spark_session,
+    generate_sample_data,
+    monitor_job_progress,
+    cleanup_session,
+    print_dataframe_summary,
+    parse_common_args,
+    handle_errors,
 )
 
 try:
     from pyspark.sql import DataFrame, Row
     from pyspark.sql.functions import (
-        col, when, lit, concat, concat_ws, split, 
-        regexp_replace, regexp_extract, length, substring,
-        upper, lower, trim, ltrim, rtrim,
-        year, month, dayofmonth, hour, minute, second,
-        date_format, date_add, date_sub, datediff,
-        current_date, current_timestamp, unix_timestamp,
-        count, sum as spark_sum, avg, max as spark_max, min as spark_min,
-        stddev, variance, collect_list, collect_set,
-        rank, dense_rank, row_number, lag, lead,
-        first, last, ntile, percent_rank,
-        round as spark_round, ceil, floor, abs as spark_abs,
-        coalesce, greatest, least, isnan, isnull,
-        array, explode, posexplode, map_keys, map_values,
-        struct, get_json_object, from_json, to_json,
-        udf
+        col,
+        when,
+        lit,
+        concat,
+        concat_ws,
+        split,
+        regexp_replace,
+        regexp_extract,
+        length,
+        substring,
+        upper,
+        lower,
+        trim,
+        ltrim,
+        rtrim,
+        year,
+        month,
+        dayofmonth,
+        hour,
+        minute,
+        second,
+        date_format,
+        date_add,
+        date_sub,
+        datediff,
+        current_date,
+        current_timestamp,
+        unix_timestamp,
+        count,
+        sum as spark_sum,
+        avg,
+        max as spark_max,
+        min as spark_min,
+        stddev,
+        variance,
+        collect_list,
+        collect_set,
+        rank,
+        dense_rank,
+        row_number,
+        lag,
+        lead,
+        first,
+        last,
+        ntile,
+        percent_rank,
+        round as spark_round,
+        ceil,
+        floor,
+        abs as spark_abs,
+        coalesce,
+        greatest,
+        least,
+        isnan,
+        isnull,
+        array,
+        explode,
+        posexplode,
+        map_keys,
+        map_values,
+        struct,
+        get_json_object,
+        from_json,
+        to_json,
+        udf,
     )
     from pyspark.sql.types import (
-        StringType, IntegerType, DoubleType, BooleanType, ArrayType
+        StringType,
+        IntegerType,
+        DoubleType,
+        BooleanType,
+        ArrayType,
     )
     from pyspark.sql.window import Window
 except ImportError:
@@ -64,20 +123,20 @@ except ImportError:
 def setup_sample_tables(spark, num_records: int):
     """
     Create sample tables for SQL demonstrations.
-    
+
     Args:
         spark: SparkSession
         num_records: Number of records to generate
     """
     print(f"\n🔄 Setting up sample tables with {num_records:,} records...")
-    
+
     # Generate main dataset
     df = generate_sample_data(spark, num_records)
-    
+
     # Create temporary views for SQL queries
     df.createOrReplaceTempView("sales")
     print("   ✅ Created 'sales' table")
-    
+
     # Create users table
     users_data = []
     for i in range(1, 1001):  # 1000 users
@@ -88,14 +147,14 @@ def setup_sample_tables(spark, num_records: int):
             registration_date=datetime.now() - timedelta(days=i % 365),
             age=20 + (i % 60),
             city=["New York", "Los Angeles", "Chicago", "Houston", "Phoenix"][i % 5],
-            is_premium=i % 10 == 0  # 10% premium users
+            is_premium=i % 10 == 0,  # 10% premium users
         )
         users_data.append(user)
-    
+
     users_df = spark.createDataFrame(users_data)
     users_df.createOrReplaceTempView("users")
     print("   ✅ Created 'users' table")
-    
+
     # Create products table
     products_data = []
     categories = ["ELECTRONICS", "CLOTHING", "BOOKS", "HOME", "SPORTS"]
@@ -107,14 +166,14 @@ def setup_sample_tables(spark, num_records: int):
             base_price=10.0 + (i % 1000),
             supplier=f"Supplier {(i % 100) + 1}",
             in_stock=i % 20 != 0,  # 95% in stock
-            launch_date=datetime.now() - timedelta(days=(i % 1000))
+            launch_date=datetime.now() - timedelta(days=(i % 1000)),
         )
         products_data.append(product)
-    
+
     products_df = spark.createDataFrame(products_data)
     products_df.createOrReplaceTempView("products")
     print("   ✅ Created 'products' table")
-    
+
     # Show table schemas
     print("\n📋 Table Schemas:")
     print("   Sales table:")
@@ -129,20 +188,21 @@ def setup_sample_tables(spark, num_records: int):
 def basic_sql_queries(spark) -> dict:
     """
     Execute basic SQL queries for analytics.
-    
+
     Args:
         spark: SparkSession
-        
+
     Returns:
         Dictionary of query results
     """
     print("\n🔄 Executing basic SQL queries...")
-    
+
     results = {}
-    
+
     # 1. Sales summary
     print("   1. Sales summary by category...")
-    sales_summary = spark.sql("""
+    sales_summary = spark.sql(
+        """
         SELECT 
             category,
             COUNT(*) as order_count,
@@ -154,12 +214,14 @@ def basic_sql_queries(spark) -> dict:
         WHERE price > 0 AND quantity > 0
         GROUP BY category
         ORDER BY total_revenue DESC
-    """)
+    """
+    )
     results["sales_summary"] = sales_summary
-    
+
     # 2. Top customers
     print("   2. Top customers by revenue...")
-    top_customers = spark.sql("""
+    top_customers = spark.sql(
+        """
         SELECT 
             s.user_id,
             u.name,
@@ -173,12 +235,14 @@ def basic_sql_queries(spark) -> dict:
         GROUP BY s.user_id, u.name, u.city, u.is_premium
         ORDER BY total_spent DESC
         LIMIT 20
-    """)
+    """
+    )
     results["top_customers"] = top_customers
-    
+
     # 3. Daily trends
     print("   3. Daily sales trends...")
-    daily_trends = spark.sql("""
+    daily_trends = spark.sql(
+        """
         SELECT 
             DATE(timestamp) as sale_date,
             COUNT(*) as daily_orders,
@@ -189,12 +253,14 @@ def basic_sql_queries(spark) -> dict:
         GROUP BY DATE(timestamp)
         ORDER BY sale_date DESC
         LIMIT 30
-    """)
+    """
+    )
     results["daily_trends"] = daily_trends
-    
+
     # 4. Product performance
     print("   4. Product performance analysis...")
-    product_performance = spark.sql("""
+    product_performance = spark.sql(
+        """
         SELECT 
             p.product_id,
             p.name,
@@ -211,9 +277,10 @@ def basic_sql_queries(spark) -> dict:
         HAVING COUNT(s.product_id) > 0
         ORDER BY total_revenue DESC
         LIMIT 50
-    """)
+    """
+    )
     results["product_performance"] = product_performance
-    
+
     return results
 
 
@@ -221,20 +288,21 @@ def basic_sql_queries(spark) -> dict:
 def advanced_sql_queries(spark) -> dict:
     """
     Execute advanced SQL queries with window functions and CTEs.
-    
+
     Args:
         spark: SparkSession
-        
+
     Returns:
         Dictionary of advanced query results
     """
     print("\n🔄 Executing advanced SQL queries...")
-    
+
     results = {}
-    
+
     # 1. Customer cohort analysis with CTEs
     print("   1. Customer cohort analysis...")
-    cohort_analysis = spark.sql("""
+    cohort_analysis = spark.sql(
+        """
         WITH first_purchase AS (
             SELECT 
                 user_id,
@@ -263,12 +331,14 @@ def advanced_sql_queries(spark) -> dict:
         FROM user_activities
         GROUP BY cohort_month, activity_month
         ORDER BY cohort_month, activity_month
-    """)
+    """
+    )
     results["cohort_analysis"] = cohort_analysis
-    
+
     # 2. Running totals and window functions
     print("   2. Running totals and rankings...")
-    running_analytics = spark.sql("""
+    running_analytics = spark.sql(
+        """
         SELECT 
             user_id,
             timestamp,
@@ -302,12 +372,14 @@ def advanced_sql_queries(spark) -> dict:
             HAVING COUNT(*) >= 5
         )
         ORDER BY user_id, timestamp
-    """)
+    """
+    )
     results["running_analytics"] = running_analytics
-    
+
     # 3. Advanced aggregations with CUBE and ROLLUP
     print("   3. Multi-dimensional aggregations...")
-    cube_analysis = spark.sql("""
+    cube_analysis = spark.sql(
+        """
         SELECT 
             category,
             action,
@@ -325,12 +397,14 @@ def advanced_sql_queries(spark) -> dict:
             action,
             CASE WHEN is_premium IS NULL THEN 1 ELSE 0 END,
             is_premium
-    """)
+    """
+    )
     results["cube_analysis"] = cube_analysis
-    
+
     # 4. Percentiles and statistical functions
     print("   4. Statistical analysis with percentiles...")
-    statistical_analysis = spark.sql("""
+    statistical_analysis = spark.sql(
+        """
         SELECT 
             category,
             COUNT(*) as sample_size,
@@ -345,12 +419,14 @@ def advanced_sql_queries(spark) -> dict:
         FROM sales
         GROUP BY category
         ORDER BY mean_value DESC
-    """)
+    """
+    )
     results["statistical_analysis"] = statistical_analysis
-    
+
     # 5. Complex string operations and pattern matching
     print("   5. Text analytics with regex...")
-    text_analytics = spark.sql("""
+    text_analytics = spark.sql(
+        """
         SELECT 
             category,
             COUNT(*) as total_records,
@@ -361,9 +437,10 @@ def advanced_sql_queries(spark) -> dict:
         FROM sales
         GROUP BY category
         ORDER BY category
-    """)
+    """
+    )
     results["text_analytics"] = text_analytics
-    
+
     return results
 
 
@@ -371,12 +448,12 @@ def advanced_sql_queries(spark) -> dict:
 def create_custom_udfs(spark):
     """
     Create and register custom User Defined Functions.
-    
+
     Args:
         spark: SparkSession
     """
     print("\n🔄 Creating custom UDFs...")
-    
+
     # 1. Customer tier classification UDF
     def classify_customer_tier(total_spent: float) -> str:
         if total_spent is None:
@@ -389,10 +466,10 @@ def create_custom_udfs(spark):
             return "Silver"
         else:
             return "Bronze"
-    
+
     tier_udf = udf(classify_customer_tier, StringType())
     spark.udf.register("classify_tier", tier_udf)
-    
+
     # 2. Price category UDF
     def categorize_price(price: float) -> str:
         if price is None:
@@ -403,32 +480,32 @@ def create_custom_udfs(spark):
             return "Standard"
         else:
             return "Budget"
-    
+
     price_category_udf = udf(categorize_price, StringType())
     spark.udf.register("categorize_price", price_category_udf)
-    
+
     # 3. Order complexity score UDF
     def calculate_complexity_score(quantity: int, price: float, category: str) -> int:
         if any(x is None for x in [quantity, price, category]):
             return 0
-        
+
         base_score = quantity * (price / 100)
-        
+
         # Category multipliers
         multipliers = {
             "ELECTRONICS": 1.5,
             "CLOTHING": 1.0,
             "BOOKS": 0.8,
             "HOME": 1.2,
-            "SPORTS": 1.1
+            "SPORTS": 1.1,
         }
-        
+
         multiplier = multipliers.get(category, 1.0)
         return int(base_score * multiplier)
-    
+
     complexity_udf = udf(calculate_complexity_score, IntegerType())
     spark.udf.register("complexity_score", complexity_udf)
-    
+
     print("   ✅ Registered UDFs: classify_tier, categorize_price, complexity_score")
 
 
@@ -436,20 +513,21 @@ def create_custom_udfs(spark):
 def udf_based_queries(spark) -> dict:
     """
     Execute queries using custom UDFs.
-    
+
     Args:
         spark: SparkSession
-        
+
     Returns:
         Dictionary of UDF-based query results
     """
     print("\n🔄 Executing UDF-based queries...")
-    
+
     results = {}
-    
+
     # 1. Customer tier analysis
     print("   1. Customer tier analysis with UDFs...")
-    customer_tiers = spark.sql("""
+    customer_tiers = spark.sql(
+        """
         SELECT 
             classify_tier(SUM(price * quantity)) as customer_tier,
             COUNT(DISTINCT user_id) as customer_count,
@@ -460,12 +538,14 @@ def udf_based_queries(spark) -> dict:
         GROUP BY user_id
         GROUP BY classify_tier(SUM(price * quantity))
         ORDER BY avg_spending DESC
-    """)
+    """
+    )
     results["customer_tiers"] = customer_tiers
-    
+
     # 2. Price category analysis
     print("   2. Price category performance...")
-    price_categories = spark.sql("""
+    price_categories = spark.sql(
+        """
         SELECT 
             category as product_category,
             categorize_price(price) as price_tier,
@@ -475,12 +555,14 @@ def udf_based_queries(spark) -> dict:
         FROM sales
         GROUP BY category, categorize_price(price)
         ORDER BY product_category, total_revenue DESC
-    """)
+    """
+    )
     results["price_categories"] = price_categories
-    
+
     # 3. Order complexity analysis
     print("   3. Order complexity scoring...")
-    complexity_analysis = spark.sql("""
+    complexity_analysis = spark.sql(
+        """
         SELECT 
             category,
             complexity_score(quantity, price, category) as complexity,
@@ -491,9 +573,10 @@ def udf_based_queries(spark) -> dict:
         GROUP BY category, complexity_score(quantity, price, category)
         HAVING complexity > 0
         ORDER BY category, complexity DESC
-    """)
+    """
+    )
     results["complexity_analysis"] = complexity_analysis
-    
+
     return results
 
 
@@ -501,20 +584,21 @@ def udf_based_queries(spark) -> dict:
 def performance_optimization_queries(spark) -> dict:
     """
     Demonstrate performance optimization techniques.
-    
+
     Args:
         spark: SparkSession
-        
+
     Returns:
         Dictionary of optimization examples
     """
     print("\n🔄 Demonstrating performance optimizations...")
-    
+
     results = {}
-    
+
     # 1. Broadcast join example
     print("   1. Broadcast join optimization...")
-    broadcast_query = spark.sql("""
+    broadcast_query = spark.sql(
+        """
         SELECT /*+ BROADCAST(u) */
             s.category,
             u.city,
@@ -525,13 +609,15 @@ def performance_optimization_queries(spark) -> dict:
         GROUP BY s.category, u.city
         ORDER BY total_revenue DESC
         LIMIT 20
-    """)
+    """
+    )
     results["broadcast_join"] = broadcast_query
-    
+
     # 2. Partition pruning example
     print("   2. Partition-aware query...")
     # Note: This would be more effective with actual partitioned data
-    partition_query = spark.sql("""
+    partition_query = spark.sql(
+        """
         SELECT 
             category,
             DATE(timestamp) as date,
@@ -541,12 +627,14 @@ def performance_optimization_queries(spark) -> dict:
         WHERE DATE(timestamp) >= DATE_SUB(CURRENT_DATE(), 7)
         GROUP BY category, DATE(timestamp)
         ORDER BY date DESC, daily_revenue DESC
-    """)
+    """
+    )
     results["partition_query"] = partition_query
-    
+
     # 3. Columnar analytics (aggregation pushdown)
     print("   3. Columnar analytics optimization...")
-    columnar_query = spark.sql("""
+    columnar_query = spark.sql(
+        """
         SELECT 
             category,
             action,
@@ -559,9 +647,10 @@ def performance_optimization_queries(spark) -> dict:
         FROM sales
         GROUP BY category, action
         ORDER BY event_count DESC
-    """)
+    """
+    )
     results["columnar_query"] = columnar_query
-    
+
     return results
 
 
@@ -569,25 +658,25 @@ def performance_optimization_queries(spark) -> dict:
 def save_sql_results(all_results: dict, output_path: str):
     """
     Save all SQL query results to files.
-    
+
     Args:
         all_results: Dictionary containing all query results
         output_path: Base output path
     """
     print(f"\n🔄 Saving SQL results to {output_path}...")
-    
+
     try:
         for category, results in all_results.items():
             category_path = f"{output_path}/{category}"
             print(f"   Saving {category} results...")
-            
+
             for query_name, df in results.items():
                 query_path = f"{category_path}/{query_name}"
                 df.coalesce(1).write.mode("overwrite").csv(query_path, header=True)
                 print(f"     ✅ {query_name}")
-        
+
         print(f"✅ All SQL results saved to: {output_path}")
-        
+
     except Exception as e:
         print(f"⚠️  Error saving results: {e}")
 
@@ -596,38 +685,41 @@ def save_sql_results(all_results: dict, output_path: str):
 def print_sql_summary(all_results: dict):
     """
     Print a summary of all SQL query results.
-    
+
     Args:
         all_results: Dictionary containing all query results
     """
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("📊 SQL QUERIES RESULTS SUMMARY")
-    print("="*60)
-    
+    print("=" * 60)
+
     total_queries = sum(len(results) for results in all_results.values())
     print(f"\n📈 Total Queries Executed: {total_queries}")
-    
+
     for category, results in all_results.items():
         print(f"\n🔍 {category.upper().replace('_', ' ')} ({len(results)} queries):")
-        
+
         for query_name, df in results.items():
             try:
                 count = df.count()
                 print(f"   {query_name}: {count:,} rows")
-                
+
                 # Show sample for key results
-                if query_name in ["sales_summary", "top_customers", "customer_tiers"] and count > 0:
+                if (
+                    query_name in ["sales_summary", "top_customers", "customer_tiers"]
+                    and count > 0
+                ):
                     print(f"     Sample data:")
                     sample_data = df.take(3)
                     for row in sample_data:
                         row_dict = row.asDict()
                         key_value = list(row_dict.items())[0]
                         print(f"       {key_value[0]}: {key_value[1]}")
-                        
+
             except Exception as e:
                 print(f"   {query_name}: Error getting count - {e}")
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
 
 
 @handle_errors
@@ -636,75 +728,77 @@ def main():
     # Parse arguments
     parser = parse_common_args()
     args = parser.parse_args()
-    
+
     print("🚀 Starting Spark SQL Examples")
     print(f"   Records to process: {args.records:,}")
     print(f"   Output path: {args.output_path}")
     print(f"   Master: {args.master}")
-    
+
     # Create Spark session
     config = SparkConfig(
         app_name=f"{args.app_name}_SQL",
         master=args.master,
         executor_memory=args.executor_memory,
-        executor_cores=args.executor_cores
+        executor_cores=args.executor_cores,
     )
-    
+
     spark = create_spark_session(config)
-    
+
     # Enable Spark SQL optimizations
     spark.conf.set("spark.sql.adaptive.enabled", "true")
     spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
     spark.conf.set("spark.sql.adaptive.skewJoin.enabled", "true")
     spark.conf.set("spark.sql.cbo.enabled", "true")
-    
+
     try:
         start_time = time.time()
-        
+
         # Setup sample tables
         setup_sample_tables(spark, args.records)
-        
+
         # Create custom UDFs
         create_custom_udfs(spark)
-        
+
         # Execute query categories
         all_results = {}
-        
+
         print("\n🔄 Executing SQL query categories...")
-        
+
         # Basic queries
         all_results["basic_queries"] = basic_sql_queries(spark)
-        
+
         # Advanced queries
         all_results["advanced_queries"] = advanced_sql_queries(spark)
-        
+
         # UDF-based queries
         all_results["udf_queries"] = udf_based_queries(spark)
-        
+
         # Performance optimization examples
         all_results["optimization_queries"] = performance_optimization_queries(spark)
-        
+
         # Save results
         save_sql_results(all_results, args.output_path)
-        
+
         # Monitor performance
         monitor_job_progress(spark, "SQL Queries")
-        
+
         # Print summary
         print_sql_summary(all_results)
-        
+
         end_time = time.time()
         processing_time = end_time - start_time
-        
+
         print(f"\n⏱️  Total Processing Time: {processing_time:.2f} seconds")
         print(f"   Records processed: {args.records:,}")
-        print(f"   Queries per second: {sum(len(r) for r in all_results.values())/processing_time:.1f}")
-        
+        print(
+            f"   Queries per second: {sum(len(r) for r in all_results.values())/processing_time:.1f}"
+        )
+
         print(f"\n✅ SQL examples completed successfully!")
         print(f"   Executed {sum(len(r) for r in all_results.values())} queries")
         print(f"   Results saved to: {args.output_path}")
         print(f"   Spark SQL UI: http://192.168.1.184:4040")
-        
+
     finally:
         cleanup_session(spark)
 

@@ -1,0 +1,27 @@
+# kafka-redis Interaction Examples
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python examples
+py_library(
+    name = "kafka_redis_common",
+    srcs = ["python/kafka_redis_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "integration_example",
+    srcs = ["python/integration_example.py"],
+    deps = [":kafka_redis_common"],
+    main = "python/integration_example.py",
+)
+
+# Placeholder targets for Java and C++
+filegroup(name = "all_python_examples", srcs = [":integration_example"])
+filegroup(name = "all_java_examples", srcs = [])
+filegroup(name = "all_cpp_examples", srcs = [])
+filegroup(name = "all_kafka_redis_examples", srcs = [":all_python_examples"])

@@ -1,0 +1,39 @@
+# Kafka-Flink Python Examples
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "kafka_flink_common",
+    srcs = ["kafka_flink_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "stream_processor",
+    srcs = ["stream_processor.py"],
+    deps = [":kafka_flink_common"],
+    main = "stream_processor.py",
+)
+
+py_binary(
+    name = "windowing_analytics",
+    srcs = ["windowing_analytics.py"],
+    deps = [":kafka_flink_common"],
+    main = "windowing_analytics.py",
+)
+
+py_binary(
+    name = "stateful_processor",
+    srcs = ["stateful_processor.py"],
+    deps = [":kafka_flink_common"],
+    main = "stateful_processor.py",
+)
+
+py_binary(
+    name = "pattern_detector",
+    srcs = ["pattern_detector.py"],
+    deps = [":kafka_flink_common"],
+    main = "pattern_detector.py",
+)

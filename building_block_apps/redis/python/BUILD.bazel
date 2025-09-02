@@ -1,0 +1,32 @@
+# Redis Python Examples
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "redis_common",
+    srcs = ["redis_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "basic_caching",
+    srcs = ["basic_caching.py"],
+    deps = [":redis_common"],
+    main = "basic_caching.py",
+)
+
+py_binary(
+    name = "advanced_operations",
+    srcs = ["advanced_operations.py"],
+    deps = [":redis_common"],
+    main = "advanced_operations.py",
+)
+
+py_binary(
+    name = "pubsub_messaging",
+    srcs = ["pubsub_messaging.py"],
+    deps = [":redis_common"],
+    main = "pubsub_messaging.py",
+)

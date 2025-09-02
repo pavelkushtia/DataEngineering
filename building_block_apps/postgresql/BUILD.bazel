@@ -1,0 +1,105 @@
+# PostgreSQL Building Block Applications
+# Demonstrates database operations, advanced queries, and connection management
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_java//java:defs.bzl", "java_binary", "java_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Python examples
+py_library(
+    name = "postgresql_python_common",
+    srcs = ["python/postgresql_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "basic_operations",
+    srcs = ["python/basic_operations.py"],
+    deps = [":postgresql_python_common"],
+    main = "python/basic_operations.py",
+)
+
+py_binary(
+    name = "advanced_queries",
+    srcs = ["python/advanced_queries.py"],
+    deps = [":postgresql_python_common"],
+    main = "python/advanced_queries.py",
+)
+
+py_binary(
+    name = "connection_management",
+    srcs = ["python/connection_management.py"],
+    deps = [":postgresql_python_common"],
+    main = "python/connection_management.py",
+)
+
+# Java examples
+java_library(
+    name = "postgresql_java_common",
+    srcs = ["java/PostgresqlCommon.java"],
+    deps = [],
+)
+
+java_binary(
+    name = "BasicOperations",
+    srcs = ["java/BasicOperations.java"],
+    deps = [":postgresql_java_common"],
+    main_class = "BasicOperations",
+)
+
+java_binary(
+    name = "AdvancedQueries",
+    srcs = ["java/AdvancedQueries.java"],
+    deps = [":postgresql_java_common"],
+    main_class = "AdvancedQueries",
+)
+
+# C++ examples
+cc_library(
+    name = "postgresql_cpp_common",
+    srcs = ["cpp/postgresql_common.cpp"],
+    hdrs = ["cpp/postgresql_common.h"],
+    deps = [],
+)
+
+cc_binary(
+    name = "basic_operations_cpp",
+    srcs = ["cpp/basic_operations.cpp"],
+    deps = [":postgresql_cpp_common"],
+)
+
+# Convenience targets
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":basic_operations",
+        ":advanced_queries",
+        ":connection_management",
+    ],
+)
+
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":BasicOperations",
+        ":AdvancedQueries",
+    ],
+)
+
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":basic_operations_cpp",
+    ],
+)
+
+filegroup(
+    name = "all_postgresql_examples",
+    srcs = [
+        ":all_python_examples",
+        ":all_java_examples",
+        ":all_cpp_examples",
+    ],
+)

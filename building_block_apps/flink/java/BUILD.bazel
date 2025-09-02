@@ -1,0 +1,60 @@
+"""
+Flink Java Building Block Applications
+
+Java implementations of core Flink streaming patterns:
+- Real-time streaming analytics with complex event processing
+- Stateful stream processing with fraud detection
+- Windowing aggregations and real-time metrics
+- Kafka integration for source and sink operations
+"""
+
+package(default_visibility = ["//building_block_apps:__subpackages__"])
+
+load("@rules_java//java:defs.bzl", "java_binary", "java_library", "java_test")
+
+# Java streaming analytics application
+java_binary(
+    name = "StreamingAnalytics",
+    srcs = ["StreamingAnalytics.java"],
+    main_class = "com.dataengineering.flink.StreamingAnalytics",
+    deps = [
+        # Flink dependencies would be specified here
+        # In a real setup, these would reference the actual Flink JARs
+        # "@flink//core",
+        # "@flink//streaming-java",
+        # "@flink//connector-kafka",
+        # "@jackson//databind",
+    ],
+    jvm_flags = [
+        "-Xmx2g",
+        "-Xms1g",
+    ],
+    args = [
+        "--parallelism=4",
+        "--input-topic=flink-events",
+        "--output-topic=analytics-results",
+        "--kafka-servers=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092",
+    ],
+)
+
+# Test for streaming analytics
+java_test(
+    name = "StreamingAnalyticsTest",
+    srcs = ["StreamingAnalytics.java"],
+    test_class = "com.dataengineering.flink.StreamingAnalytics",
+    deps = [
+        # Test dependencies
+        # "@flink//test-utils",
+        # "@junit//junit4",
+    ],
+    size = "medium",
+    timeout = "moderate",
+)
+
+# Convenience targets
+filegroup(
+    name = "all_java_apps",
+    srcs = [
+        ":StreamingAnalytics",
+    ],
+)

@@ -5,28 +5,30 @@ This document provides a comprehensive collection of medium to advanced level ap
 
 ## Prerequisites
 Before tackling these projects, ensure you have:
-- Completed the basic setup of all components (PostgreSQL, Kafka, Spark, Flink, Trino, Iceberg, Delta Lake)
+- Completed the basic setup of all components (PostgreSQL, Kafka, Spark, Flink, Trino, Iceberg, Delta Lake, Elasticsearch)
 - Basic understanding of data engineering concepts
 - Familiarity with SQL, Python, and Scala
 - Understanding of distributed systems concepts
+- Knowledge of JSON and REST APIs for Elasticsearch integration
 
 ---
 
 ## 🏢 **Category 1: Real-time Analytics Platform**
 
-### Project 1: E-commerce Real-time Analytics Pipeline
+### Project 1: E-commerce Real-time Analytics Pipeline with Search
 **Difficulty: Medium**
 **Duration: 2-3 weeks**
-**Technologies: Kafka, Flink, PostgreSQL, Spark, Delta Lake**
+**Technologies: Kafka, Flink, PostgreSQL, Spark, Delta Lake, Elasticsearch, Kibana**
 
 #### Description
-Build a comprehensive real-time analytics system for an e-commerce platform that processes user interactions, orders, and inventory updates in real-time.
+Build a comprehensive real-time analytics system for an e-commerce platform that processes user interactions, orders, and inventory updates in real-time, with advanced search and analytics capabilities.
 
 #### Architecture
 ```
 Web App → Kafka → Flink → Delta Lake → Spark → Dashboards
-                    ↓
-              PostgreSQL (OLTP)
+           ↓        ↓         ↓               ↓
+    PostgreSQL  Elasticsearch → Kibana    Product Search API
+       (OLTP)    (Analytics)    (Dashboards)  (Real-time)
 ```
 
 #### Key Learning Objectives
@@ -54,12 +56,22 @@ events = {
 - Shopping cart abandonment detection
 - Inventory alerting system
 - Fraud detection based on purchasing patterns
+- Real-time product search indexing
+- Live inventory search updates
 
-**Phase 3: Batch Processing**
+**Phase 3: Search & Analytics Integration**
+- Product catalog search with auto-complete
+- Personalized search results based on user behavior
+- Advanced filtering and faceted search
+- Search analytics and query performance monitoring
+- Real-time search suggestions and trending products
+
+**Phase 4: Batch Processing**
 - Daily/weekly aggregations
 - Customer segmentation
 - Product recommendation model training
 - Business intelligence reports
+- Search query analysis and optimization
 
 #### Challenges to Solve
 1. **Late-arriving data**: Handle events that arrive out of order
@@ -67,6 +79,56 @@ events = {
 3. **Real-time joins**: Join streaming data with slowly changing dimensions
 4. **Scalability**: Handle traffic spikes during sales events
 5. **Data quality**: Implement validation and cleansing rules
+6. **Search relevance**: Optimize search ranking and personalization
+7. **Multi-language search**: Handle international product catalogs
+8. **Search performance**: Sub-100ms search response times
+
+#### Elasticsearch Integration Details
+
+**Product Catalog Indexing**
+```python
+# Real-time product indexing
+product_mapping = {
+    "mappings": {
+        "properties": {
+            "product_id": {"type": "keyword"},
+            "name": {
+                "type": "text",
+                "analyzer": "standard",
+                "fields": {
+                    "suggest": {
+                        "type": "completion",
+                        "analyzer": "simple"
+                    }
+                }
+            },
+            "description": {"type": "text"},
+            "category": {"type": "keyword"},
+            "price": {"type": "double"},
+            "inventory_count": {"type": "integer"},
+            "ratings": {"type": "float"},
+            "tags": {"type": "keyword"},
+            "created_at": {"type": "date"},
+            "location": {"type": "geo_point"}
+        }
+    }
+}
+```
+
+**Search Analytics Pipeline**
+```python
+# Track search queries and results
+search_event = {
+    "query": "wireless headphones",
+    "user_id": "user_123",
+    "session_id": "session_456",
+    "timestamp": "2024-01-01T10:00:00Z",
+    "results_count": 45,
+    "clicked_products": ["prod_789", "prod_101"],
+    "search_type": "autocomplete",
+    "filters_applied": ["brand:sony", "price:<100"]
+}
+```
 
 #### Success Metrics
 - Process 10,000+ events per second
@@ -76,19 +138,21 @@ events = {
 
 ---
 
-### Project 2: IoT Sensor Data Platform
+### Project 2: IoT Sensor Data Platform with Log Analytics
 **Difficulty: Medium-Advanced**
 **Duration: 3-4 weeks**
-**Technologies: Kafka, Flink, TimescaleDB (PostgreSQL), Spark, Iceberg**
+**Technologies: Kafka, Flink, TimescaleDB (PostgreSQL), Spark, Iceberg, Elasticsearch, Kibana**
 
 #### Description
-Create a platform for ingesting, processing, and analyzing IoT sensor data from smart home devices, including anomaly detection and predictive maintenance.
+Create a platform for ingesting, processing, and analyzing IoT sensor data from smart home devices, including anomaly detection, predictive maintenance, and comprehensive log analytics.
 
 #### Architecture
 ```
 IoT Devices → MQTT → Kafka → Flink → TimescaleDB
-                                ↓
-                           Iceberg Tables → Spark ML → Alerts
+                       ↓        ↓         ↓
+                 Elasticsearch ← ← ← Iceberg Tables → Spark ML → Alerts
+                       ↓                                    ↓
+                   Kibana Dashboards ← ← ← ← ← ← ← ← ← ← ← ← ←
 ```
 
 #### Data Sources Simulation
@@ -112,6 +176,77 @@ IoT Devices → MQTT → Kafka → Flink → TimescaleDB
 4. **Time Series Analysis**: Historical trend analysis
 5. **Predictive Maintenance**: ML models for equipment failure prediction
 6. **Energy Optimization**: Smart scheduling based on usage patterns
+7. **Log Analytics**: Centralized logging for all IoT devices and services
+8. **Real-time Monitoring**: Live dashboards with alerting
+9. **Device Search**: Query and filter devices by location, type, and status
+10. **Performance Analytics**: System performance and health monitoring
+
+#### Elasticsearch Integration
+
+**Device Registry and Search**
+```python
+# Device metadata indexing
+device_mapping = {
+    "mappings": {
+        "properties": {
+            "device_id": {"type": "keyword"},
+            "device_type": {"type": "keyword"},
+            "location": {
+                "type": "text",
+                "fields": {
+                    "keyword": {"type": "keyword"},
+                    "suggest": {"type": "completion"}
+                }
+            },
+            "coordinates": {"type": "geo_point"},
+            "manufacturer": {"type": "keyword"},
+            "model": {"type": "text"},
+            "firmware_version": {"type": "keyword"},
+            "installation_date": {"type": "date"},
+            "last_seen": {"type": "date"},
+            "status": {"type": "keyword"},
+            "battery_level": {"type": "integer"},
+            "signal_strength": {"type": "integer"}
+        }
+    }
+}
+```
+
+**Sensor Data Analytics**
+```python
+# Real-time sensor readings for analytics
+sensor_data = {
+    "@timestamp": "2024-01-01T10:30:00Z",
+    "device_id": "sensor_001",
+    "device_type": "temperature",
+    "location": "living_room",
+    "value": 22.5,
+    "unit": "celsius",
+    "battery_level": 85,
+    "signal_strength": -45,
+    "anomaly_score": 0.1,
+    "is_anomaly": False
+}
+```
+
+**Log Aggregation**
+```python
+# Device and system logs
+log_mapping = {
+    "mappings": {
+        "properties": {
+            "@timestamp": {"type": "date"},
+            "level": {"type": "keyword"},
+            "message": {"type": "text"},
+            "device_id": {"type": "keyword"},
+            "component": {"type": "keyword"},
+            "error_code": {"type": "keyword"},
+            "stack_trace": {"type": "text"},
+            "user_id": {"type": "keyword"}
+        }
+    }
+}
+```
 
 #### Advanced Challenges
 1. **Multi-tenancy**: Support multiple homes/buildings
@@ -119,6 +254,10 @@ IoT Devices → MQTT → Kafka → Flink → TimescaleDB
 3. **Data Compression**: Optimize storage for high-volume time series data
 4. **Seasonality Handling**: Account for seasonal patterns in analysis
 5. **Real-time ML**: Deploy and update ML models in streaming context
+6. **Log Correlation**: Correlate device logs with sensor anomalies
+7. **Geo-spatial Analytics**: Location-based device performance analysis
+8. **Cross-device Analytics**: Identify patterns across device ecosystems
+9. **Performance Monitoring**: Track system health and identify bottlenecks
 
 ---
 
@@ -288,13 +427,13 @@ features = [
 
 ---
 
-### Project 6: Fraud Detection System
+### Project 6: Fraud Detection System with Search Analytics
 **Difficulty: Advanced**
 **Duration: 5-6 weeks**
-**Technologies: Flink, Kafka, Spark MLlib, Graph Databases, Feature Store**
+**Technologies: Flink, Kafka, Spark MLlib, Graph Databases, Feature Store, Elasticsearch, Kibana**
 
 #### Description
-Develop a sophisticated fraud detection system that combines rule-based and ML-based approaches with graph analytics for network fraud detection.
+Develop a sophisticated fraud detection system that combines rule-based and ML-based approaches with graph analytics for network fraud detection, enhanced with comprehensive search and analytics capabilities.
 
 #### Multi-layered Approach
 
@@ -340,12 +479,110 @@ val fraudPattern = Pattern.begin[Transaction]("start")
 - Network-based features
 - Time-based features
 
+#### Elasticsearch Integration for Fraud Detection
+
+**Transaction Search and Analytics**
+```python
+# Transaction indexing for search and analytics
+transaction_mapping = {
+    "mappings": {
+        "properties": {
+            "@timestamp": {"type": "date"},
+            "transaction_id": {"type": "keyword"},
+            "user_id": {"type": "keyword"},
+            "merchant_id": {"type": "keyword"},
+            "amount": {"type": "double"},
+            "currency": {"type": "keyword"},
+            "location": {"type": "geo_point"},
+            "device_fingerprint": {"type": "keyword"},
+            "ip_address": {"type": "ip"},
+            "fraud_score": {"type": "float"},
+            "fraud_flags": {"type": "keyword"},
+            "investigation_status": {"type": "keyword"},
+            "related_transactions": {"type": "keyword"}
+        }
+    }
+}
+```
+
+**Fraud Pattern Search**
+```python
+# Search for similar fraud patterns
+fraud_pattern_query = {
+    "query": {
+        "bool": {
+            "must": [
+                {"range": {"fraud_score": {"gte": 0.8}}},
+                {"geo_distance": {
+                    "distance": "10km",
+                    "location": {"lat": 40.7128, "lon": -74.0060}
+                }}
+            ],
+            "should": [
+                {"match": {"merchant_id": "merchant_123"}},
+                {"terms": {"fraud_flags": ["velocity", "unusual_location"]}}
+            ]
+        }
+    },
+    "aggs": {
+        "fraud_types": {
+            "terms": {"field": "fraud_flags"}
+        },
+        "amount_stats": {
+            "stats": {"field": "amount"}
+        }
+    }
+}
+```
+
+**Real-time Alerting**
+```python
+# Watcher for real-time fraud alerts
+fraud_alert_watcher = {
+    "trigger": {
+        "schedule": {"interval": "10s"}
+    },
+    "input": {
+        "search": {
+            "request": {
+                "search_type": "query_then_fetch",
+                "indices": ["fraud-transactions"],
+                "body": {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"range": {"@timestamp": {"gte": "now-10s"}}},
+                                {"range": {"fraud_score": {"gte": 0.9}}}
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "condition": {
+        "compare": {"ctx.payload.hits.total": {"gt": 0}}
+    },
+    "actions": {
+        "send_alert": {
+            "webhook": {
+                "url": "https://hooks.slack.com/fraud-alerts",
+                "body": "High-risk fraud detected: {{ctx.payload.hits.total}} transactions"
+            }
+        }
+    }
+}
+```
+
 #### Challenge Areas
 1. **Low Latency Requirements**: Process decisions within 100ms
 2. **Concept Drift**: Handle evolving fraud patterns
 3. **Class Imbalance**: Deal with rare positive cases
 4. **Explainability**: Provide reasons for fraud decisions
 5. **Feedback Loops**: Incorporate investigator feedback
+6. **Search Performance**: Sub-second search across billions of transactions
+7. **Pattern Recognition**: Identify subtle fraud networks through graph analysis
+8. **False Positive Management**: Minimize legitimate transaction blocking
 
 ---
 
@@ -541,12 +778,353 @@ class NCF(tf.keras.Model):
 
 ---
 
+### Project 11: Enterprise Search and Analytics Platform
+**Difficulty: Advanced**
+**Duration: 6-8 weeks**
+**Technologies: Elasticsearch, Kibana, Logstash, Kafka, Spark, NLP Libraries, Vector Search**
+
+#### Description
+Build a comprehensive enterprise search platform that provides full-text search, analytics, and AI-powered insights across multiple data sources including documents, logs, metrics, and structured data.
+
+#### Architecture
+```
+Data Sources → Ingestion Pipeline → Elasticsearch Cluster → Search APIs
+     ↓               ↓                       ↓               ↓
+Documents,      Logstash,           Vector Search,      Web Apps,
+Databases,      Kafka,              ML Analytics,       Dashboards,
+APIs,           NLP Processing      Real-time Alerts    Mobile Apps
+Logs            ↓                       ↓
+                Elasticsearch Index ← Kibana Dashboards
+```
+
+#### Core Components
+
+**1. Multi-Source Data Ingestion**
+```python
+# Document ingestion pipeline
+document_pipeline = {
+    "description": "Extract and enrich document content",
+    "processors": [
+        {
+            "attachment": {
+                "field": "data",
+                "target_field": "attachment",
+                "indexed_chars": 100000
+            }
+        },
+        {
+            "set": {
+                "field": "title",
+                "value": "{{attachment.title}}"
+            }
+        },
+        {
+            "date": {
+                "field": "attachment.date",
+                "target_field": "@timestamp",
+                "formats": ["yyyy-MM-dd'T'HH:mm:ss"]
+            }
+        },
+        {
+            "remove": {
+                "field": "data"
+            }
+        }
+    ]
+}
+```
+
+**2. Semantic Search with Vector Embeddings**
+```python
+# Vector search mapping
+vector_mapping = {
+    "mappings": {
+        "properties": {
+            "title": {"type": "text"},
+            "content": {"type": "text"},
+            "content_vector": {
+                "type": "dense_vector",
+                "dims": 768,
+                "index": True,
+                "similarity": "cosine"
+            },
+            "category": {"type": "keyword"},
+            "tags": {"type": "keyword"},
+            "@timestamp": {"type": "date"},
+            "author": {"type": "keyword"},
+            "department": {"type": "keyword"},
+            "security_level": {"type": "keyword"}
+        }
+    }
+}
+
+# Semantic search query
+semantic_search = {
+    "query": {
+        "script_score": {
+            "query": {"match_all": {}},
+            "script": {
+                "source": "cosineSimilarity(params.query_vector, 'content_vector') + 1.0",
+                "params": {
+                    "query_vector": [0.1, 0.2, 0.3, ...]  # Vector from query embedding
+                }
+            }
+        }
+    }
+}
+```
+
+**3. Advanced Analytics Engine**
+```python
+# Complex aggregation for analytics
+analytics_query = {
+    "size": 0,
+    "aggs": {
+        "content_trends": {
+            "date_histogram": {
+                "field": "@timestamp",
+                "calendar_interval": "1M"
+            },
+            "aggs": {
+                "top_categories": {
+                    "terms": {"field": "category", "size": 10}
+                },
+                "engagement_score": {
+                    "avg": {"field": "view_count"}
+                }
+            }
+        },
+        "department_activity": {
+            "terms": {"field": "department"},
+            "aggs": {
+                "document_types": {
+                    "terms": {"field": "document_type"}
+                },
+                "avg_size": {
+                    "avg": {"field": "file_size"}
+                }
+            }
+        },
+        "search_patterns": {
+            "significant_terms": {
+                "field": "search_terms",
+                "background_filter": {
+                    "range": {"@timestamp": {"gte": "now-30d"}}
+                }
+            }
+        }
+    }
+}
+```
+
+**4. Real-time Monitoring and Alerting**
+```python
+# Performance monitoring
+performance_metrics = {
+    "cluster_health": {
+        "status": "green",
+        "number_of_nodes": 3,
+        "number_of_data_nodes": 2,
+        "active_primary_shards": 156,
+        "active_shards": 312,
+        "unassigned_shards": 0
+    },
+    "search_performance": {
+        "avg_query_time": "45ms",
+        "queries_per_second": 125,
+        "cache_hit_ratio": 0.85,
+        "indexing_rate": "1000 docs/sec"
+    },
+    "resource_usage": {
+        "heap_usage": "65%",
+        "disk_usage": "45%",
+        "cpu_usage": "30%"
+    }
+}
+```
+
+#### Advanced Features
+
+**1. Natural Language Processing Pipeline**
+```python
+# NLP enrichment pipeline
+nlp_pipeline = {
+    "description": "Extract entities and sentiment from text",
+    "processors": [
+        {
+            "inference": {
+                "model_id": "sentence-transformers__all-MiniLM-L6-v2",
+                "target_field": "ml.inference",
+                "field_map": {
+                    "content": "text_field"
+                }
+            }
+        },
+        {
+            "script": {
+                "source": """
+                def entities = ctx.ml.inference.entities;
+                def people = [];
+                def organizations = [];
+                def locations = [];
+                
+                for (entity in entities) {
+                    if (entity.type == 'PERSON') {
+                        people.add(entity.text);
+                    } else if (entity.type == 'ORG') {
+                        organizations.add(entity.text);
+                    } else if (entity.type == 'LOC') {
+                        locations.add(entity.text);
+                    }
+                }
+                
+                ctx.extracted_people = people;
+                ctx.extracted_organizations = organizations;
+                ctx.extracted_locations = locations;
+                """
+            }
+        }
+    ]
+}
+```
+
+**2. Security and Access Control**
+```python
+# Role-based security configuration
+security_config = {
+    "role_mapping": {
+        "admin_role": {
+            "enabled": True,
+            "rules": {
+                "field": {"username": "admin"}
+            }
+        },
+        "hr_role": {
+            "enabled": True,
+            "rules": {
+                "field": {"groups": "hr_department"}
+            }
+        }
+    },
+    "index_privileges": {
+        "hr_role": {
+            "indices": ["hr-*", "employee-*"],
+            "privileges": ["read", "view_index_metadata"]
+        },
+        "finance_role": {
+            "indices": ["finance-*", "budget-*"],
+            "privileges": ["read", "write", "view_index_metadata"]
+        }
+    }
+}
+```
+
+**3. Auto-completion and Suggestions**
+```python
+# Smart suggestions implementation
+suggestion_mapping = {
+    "mappings": {
+        "properties": {
+            "suggest": {
+                "type": "completion",
+                "analyzer": "simple",
+                "preserve_separators": True,
+                "preserve_position_increments": True,
+                "max_input_length": 50,
+                "contexts": [
+                    {
+                        "name": "category",
+                        "type": "category"
+                    },
+                    {
+                        "name": "department",
+                        "type": "category"
+                    }
+                ]
+            }
+        }
+    }
+}
+
+# Contextual suggestions query
+suggestion_query = {
+    "suggest": {
+        "content_suggest": {
+            "prefix": "data mining",
+            "completion": {
+                "field": "suggest",
+                "size": 10,
+                "contexts": {
+                    "category": ["technology", "research"],
+                    "department": ["engineering", "data_science"]
+                }
+            }
+        }
+    }
+}
+```
+
+#### Implementation Phases
+
+**Phase 1: Foundation (Weeks 1-2)**
+- Set up Elasticsearch cluster with proper sizing
+- Configure basic indexing pipelines
+- Implement document ingestion for common formats
+- Create basic search APIs
+
+**Phase 2: Advanced Search (Weeks 3-4)**
+- Implement semantic search with vector embeddings
+- Add auto-completion and suggestions
+- Create faceted search and filtering
+- Develop relevance tuning mechanisms
+
+**Phase 3: Analytics and ML (Weeks 5-6)**
+- Build analytics dashboards in Kibana
+- Implement NLP processing pipelines
+- Create custom scoring algorithms
+- Add anomaly detection for search patterns
+
+**Phase 4: Enterprise Features (Weeks 7-8)**
+- Implement security and access control
+- Add monitoring and alerting
+- Create performance optimization tools
+- Develop API rate limiting and quotas
+
+#### Technical Challenges
+
+1. **Scale Management**: Handle TBs of searchable content
+2. **Relevance Tuning**: Optimize search results for different use cases
+3. **Performance Optimization**: Maintain sub-100ms search times
+4. **Multi-tenancy**: Secure data isolation between departments
+5. **Real-time Indexing**: Handle high-volume document ingestion
+6. **Vector Search Performance**: Optimize similarity search at scale
+7. **Multilingual Support**: Handle international content effectively
+
+#### Success Metrics
+
+- **Search Performance**: < 50ms average response time
+- **Relevance Score**: > 85% user satisfaction with search results
+- **Scalability**: Handle 10,000+ concurrent users
+- **Availability**: 99.9% uptime
+- **Index Performance**: Process 100,000+ documents per hour
+- **Storage Efficiency**: 70% compression ratio
+
+#### Business Value
+
+- **Knowledge Discovery**: Unlock insights from unstructured data
+- **Productivity**: Reduce time to find information by 60%
+- **Compliance**: Automated content classification and retention
+- **Decision Making**: Real-time analytics on enterprise data
+- **User Experience**: Google-like search across all enterprise systems
+
+---
+
 ## 🌐 **Category 6: Distributed Systems & Performance**
 
-### Project 11: High-Performance Time Series Database
+### Project 12: High-Performance Time Series Database
 **Difficulty: Advanced**
 **Duration: 8-10 weeks**
-**Technologies: Custom Storage Engine, Kafka, Compression Algorithms**
+**Technologies: Custom Storage Engine, Kafka, Compression Algorithms, Elasticsearch**
 
 #### Description
 Develop a specialized time series database optimized for high ingestion rates and efficient compression.
@@ -566,10 +1144,10 @@ Develop a specialized time series database optimized for high ingestion rates an
 
 ---
 
-### Project 12: Global Event Streaming Platform
+### Project 13: Global Event Streaming Platform
 **Difficulty: Advanced**
 **Duration: 10-12 weeks**
-**Technologies: Kafka, Custom Networking, Geographic Distribution**
+**Technologies: Kafka, Custom Networking, Geographic Distribution, Elasticsearch**
 
 #### Description
 Build a globally distributed event streaming platform that handles cross-region replication with consistency guarantees.
@@ -586,24 +1164,31 @@ Build a globally distributed event streaming platform that handles cross-region 
 ## 🎯 **Learning Progression Guide**
 
 ### Beginner Path (Start Here)
-1. **Project 1**: E-commerce Analytics Pipeline
+1. **Project 1**: E-commerce Analytics Pipeline with Search
 2. **Project 5**: Customer 360 Platform
-3. **Project 2**: IoT Sensor Data Platform
+3. **Project 2**: IoT Sensor Data Platform with Log Analytics
 
 ### Intermediate Path
 1. **Project 3**: Data Lakehouse with CDC
-2. **Project 6**: Fraud Detection System
+2. **Project 6**: Fraud Detection System with Search Analytics
 3. **Project 7**: Multi-Cloud Integration
 
 ### Advanced Path
 1. **Project 4**: Financial Trading Platform
 2. **Project 8**: Event-Driven Microservices
 3. **Project 9**: MLOps Platform
+4. **Project 11**: Enterprise Search and Analytics Platform
 
 ### Expert Path
 1. **Project 10**: Deep Learning Recommendations
-2. **Project 11**: Time Series Database
-3. **Project 12**: Global Streaming Platform
+2. **Project 12**: High-Performance Time Series Database
+3. **Project 13**: Global Streaming Platform
+
+### Elasticsearch Focus Track
+1. **Project 1**: E-commerce Analytics with Search (Beginner)
+2. **Project 2**: IoT Platform with Log Analytics (Intermediate)
+3. **Project 6**: Fraud Detection with Search Analytics (Advanced)
+4. **Project 11**: Enterprise Search Platform (Expert)
 
 ---
 

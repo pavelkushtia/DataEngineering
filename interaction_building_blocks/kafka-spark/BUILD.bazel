@@ -1,0 +1,24 @@
+# Kafka-Spark Interaction Examples
+# Spark Streaming from Kafka topics
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "kafka_spark_common",
+    srcs = ["python/kafka_spark_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "structured_streaming",
+    srcs = ["python/structured_streaming.py"],
+    deps = [":kafka_spark_common"],
+    main = "python/structured_streaming.py",
+)
+
+filegroup(name = "all_python_examples", srcs = [":structured_streaming"])
+filegroup(name = "all_java_examples", srcs = [])
+filegroup(name = "all_cpp_examples", srcs = [])
+filegroup(name = "all_kafka_spark_examples", srcs = [":all_python_examples"])

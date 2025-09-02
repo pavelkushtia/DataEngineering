@@ -1,0 +1,99 @@
+"""
+Flink Building Block Applications
+
+This package contains comprehensive Apache Flink examples demonstrating:
+- Real-time stream processing
+- SQL-based declarative stream processing
+- Change Data Capture (CDC) processing
+- Advanced windowing and aggregations
+- Sophisticated state management
+- Complex event processing
+
+These examples are designed to be production-ready building blocks
+that can be adapted for various real-time data processing scenarios.
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+# Flink Python applications
+py_library(
+    name = "flink_common",
+    srcs = ["python/flink_common.py"],
+    deps = [
+        # Note: PyFlink dependencies would be added here in a real Bazel setup
+        # "@pyflink//:pyflink",
+    ],
+    visibility = ["//building_block_apps/flink:__subpackages__"],
+)
+
+py_binary(
+    name = "streaming_analytics",
+    srcs = ["python/streaming_analytics.py"],
+    deps = [":flink_common"],
+    main = "python/streaming_analytics.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+)
+
+py_binary(
+    name = "sql_streaming",
+    srcs = ["python/sql_streaming.py"],
+    deps = [":flink_common"],
+    main = "python/sql_streaming.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+)
+
+py_binary(
+    name = "cdc_processing",
+    srcs = ["python/cdc_processing.py"],
+    deps = [":flink_common"],
+    main = "python/cdc_processing.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+)
+
+py_binary(
+    name = "windowing_aggregations",
+    srcs = ["python/windowing_aggregations.py"],
+    deps = [":flink_common"],
+    main = "python/windowing_aggregations.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+)
+
+py_binary(
+    name = "state_management",
+    srcs = ["python/state_management.py"],
+    deps = [":flink_common"],
+    main = "python/state_management.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+)
+
+# Test targets
+py_test(
+    name = "flink_common_test",
+    srcs = ["python/flink_common.py"],
+    deps = [":flink_common"],
+    main = "python/flink_common.py",
+    args = ["--test-mode"],
+)
+
+# Convenience target to run all Flink examples
+filegroup(
+    name = "all_examples",
+    srcs = [
+        ":streaming_analytics",
+        ":sql_streaming", 
+        ":cdc_processing",
+        ":windowing_aggregations",
+        ":state_management",
+    ],
+)
+
+# Documentation
+filegroup(
+    name = "docs",
+    srcs = ["README.md"],
+)

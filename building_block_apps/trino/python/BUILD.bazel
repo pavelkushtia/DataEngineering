@@ -1,0 +1,32 @@
+# Trino Python Examples
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "trino_common",
+    srcs = ["trino_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "basic_queries", 
+    srcs = ["basic_queries.py"],
+    deps = [":trino_common"],
+    main = "basic_queries.py",
+)
+
+py_binary(
+    name = "federated_queries",
+    srcs = ["federated_queries.py"], 
+    deps = [":trino_common"],
+    main = "federated_queries.py",
+)
+
+py_binary(
+    name = "performance_analysis",
+    srcs = ["performance_analysis.py"],
+    deps = [":trino_common"],
+    main = "performance_analysis.py",
+)

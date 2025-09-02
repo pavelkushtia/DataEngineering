@@ -1,0 +1,32 @@
+# PostgreSQL Python Examples
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "postgresql_common",
+    srcs = ["postgresql_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "basic_operations",
+    srcs = ["basic_operations.py"],
+    deps = [":postgresql_common"],
+    main = "basic_operations.py",
+)
+
+py_binary(
+    name = "advanced_queries",
+    srcs = ["advanced_queries.py"],
+    deps = [":postgresql_common"],
+    main = "advanced_queries.py",
+)
+
+py_binary(
+    name = "connection_management",
+    srcs = ["connection_management.py"],
+    deps = [":postgresql_common"],
+    main = "connection_management.py",
+)

@@ -1,0 +1,154 @@
+"""
+Flink Python Building Block Applications
+
+Python implementations of comprehensive Flink streaming patterns:
+- Streaming analytics with complex event processing
+- SQL-based stream processing with CDC integration
+- Advanced windowing strategies and custom triggers
+- Sophisticated state management with TTL and cleanup
+- Real-time feature generation for ML pipelines
+"""
+
+package(default_visibility = ["//building_block_apps:__subpackages__"])
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+
+# Common utilities library
+py_library(
+    name = "flink_common",
+    srcs = ["flink_common.py"],
+    deps = [
+        # PyFlink dependencies would be specified here
+        # In a real setup, these would reference the actual PyFlink packages
+    ],
+    visibility = ["//building_block_apps/flink:__subpackages__"],
+)
+
+# Streaming Analytics Application
+py_binary(
+    name = "streaming_analytics",
+    srcs = ["streaming_analytics.py"],
+    deps = [":flink_common"],
+    main = "streaming_analytics.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+    args = [
+        "--app-name=StreamingAnalytics",
+        "--parallelism=4",
+        "--duration=120",
+        "--kafka-topic=flink-events",
+    ],
+)
+
+# SQL Streaming Application
+py_binary(
+    name = "sql_streaming", 
+    srcs = ["sql_streaming.py"],
+    deps = [":flink_common"],
+    main = "sql_streaming.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+    args = [
+        "--app-name=SQLStreaming",
+        "--duration=180",
+    ],
+)
+
+# CDC Processing Application
+py_binary(
+    name = "cdc_processing",
+    srcs = ["cdc_processing.py"],
+    deps = [":flink_common"],
+    main = "cdc_processing.py", 
+    python_version = "PY3",
+    srcs_version = "PY3",
+    args = [
+        "--app-name=CDCProcessing",
+        "--source-tables=users,orders,products,order_items",
+        "--enable-validation",
+    ],
+)
+
+# Windowing Aggregations Application
+py_binary(
+    name = "windowing_aggregations",
+    srcs = ["windowing_aggregations.py"],
+    deps = [":flink_common"],
+    main = "windowing_aggregations.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+    args = [
+        "--app-name=WindowingAggregations",
+        "--window-types=tumbling,sliding,session",
+        "--tumbling-minutes=2",
+        "--sliding-minutes=10",
+    ],
+)
+
+# State Management Application
+py_binary(
+    name = "state_management",
+    srcs = ["state_management.py"],
+    deps = [":flink_common"],
+    main = "state_management.py",
+    python_version = "PY3", 
+    srcs_version = "PY3",
+    args = [
+        "--app-name=StateManagement",
+        "--state-types=keyed,complex",
+        "--state-ttl=24",
+    ],
+)
+
+# Test suites
+py_test(
+    name = "flink_common_test",
+    srcs = ["flink_common.py"],
+    deps = [":flink_common"],
+    main = "flink_common.py",
+    size = "small",
+    timeout = "short",
+)
+
+py_test(
+    name = "streaming_analytics_test",
+    srcs = ["streaming_analytics.py"],
+    deps = [":flink_common"],
+    main = "streaming_analytics.py",
+    args = ["--duration=10", "--records=100"],
+    size = "medium",
+    timeout = "moderate",
+)
+
+# Convenience targets for different use cases
+
+# Real-time analytics pipeline
+filegroup(
+    name = "analytics_pipeline",
+    srcs = [
+        ":streaming_analytics",
+        ":sql_streaming",
+        ":windowing_aggregations",
+    ],
+)
+
+# Data integration pipeline  
+filegroup(
+    name = "integration_pipeline",
+    srcs = [
+        ":cdc_processing",
+        ":state_management",
+    ],
+)
+
+# All Python Flink applications
+filegroup(
+    name = "all_python_apps",
+    srcs = [
+        ":streaming_analytics",
+        ":sql_streaming",
+        ":cdc_processing", 
+        ":windowing_aggregations",
+        ":state_management",
+    ],
+)
