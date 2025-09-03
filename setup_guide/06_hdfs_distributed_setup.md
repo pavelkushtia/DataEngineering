@@ -448,32 +448,48 @@ chmod +x /home/hadoop/monitor-hdfs.sh
 
 ### Update Spark configuration:
 
-Spark needs HDFS access for distributed lakehouse storage:
+**⚠️ IMPORTANT:** If you already have Spark installed (from [03_spark_cluster_setup.md](03_spark_cluster_setup.md)), adding HDFS integration will **break the History Server** unless you also update event log paths.
 
+**Step 1: Add HDFS configuration to Spark:**
 ```bash
 # Add HDFS configuration to Spark defaults
 sudo su - spark -c "echo 'spark.hadoop.fs.defaultFS                hdfs://192.168.1.184:9000' >> /home/spark/spark/conf/spark-defaults.conf"
 sudo su - spark -c "echo 'spark.sql.warehouse.dir                  hdfs://192.168.1.184:9000/lakehouse' >> /home/spark/spark/conf/spark-defaults.conf"
 ```
 
+**Step 2: Fix History Server configuration (CRITICAL):**
+```bash
+# Create HDFS directory for Spark event logs
+sudo su - hadoop -c "export HADOOP_HOME=/opt/hadoop/current && export PATH=\$HADOOP_HOME/bin:\$HADOOP_HOME/sbin:\$PATH && hdfs dfs -mkdir -p /lakehouse/spark/event-logs"
+sudo su - hadoop -c "export HADOOP_HOME=/opt/hadoop/current && export PATH=\$HADOOP_HOME/bin:\$HADOOP_HOME/sbin:\$PATH && hdfs dfs -chmod 777 /lakehouse/spark/event-logs"
+
+# THE FIX: Update hardcoded path in spark-env.sh (this is what actually fixes the History Server)
+sudo sed -i 's|/home/spark/spark/logs|hdfs://192.168.1.184:9000/lakehouse/spark/event-logs|' /home/spark/spark/conf/spark-env.sh
+```
+
 **Alternatively, if you prefer manual editing:**
 ```bash
-# Add to spark-defaults.conf
-nano /home/spark/spark/conf/spark-defaults.conf
+# Edit spark-env.sh to fix History Server
+nano /home/spark/spark/conf/spark-env.sh
 ```
 
-Add these properties:
-```properties
-spark.hadoop.fs.defaultFS                hdfs://192.168.1.184:9000
-spark.sql.warehouse.dir                  hdfs://192.168.1.184:9000/lakehouse
+Update the `SPARK_HISTORY_OPTS` line to:
+```bash
+export SPARK_HISTORY_OPTS="-Dspark.history.ui.port=18080 -Dspark.history.fs.logDirectory=hdfs://192.168.1.184:9000/lakehouse/spark/event-logs"
 ```
 
-**Restart Spark services:**
+**Step 3: Restart Spark services:**
 ```bash
 # Restart Spark services on all nodes
 sudo systemctl restart spark-master    # Only on cpu-node1 (master)
 sudo systemctl restart spark-worker    # On cpu-node2 and worker-node3
 sudo systemctl restart spark-history   # Only on cpu-node1 (history server)
+```
+
+**Verification:**
+```bash
+# Check History Server is running (should show "active (running)")
+sudo systemctl status spark-history
 ```
 
 ### Update Flink configuration:

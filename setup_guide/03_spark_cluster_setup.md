@@ -226,7 +226,7 @@ chmod 755 $SPARK_HOME/work
 chmod 755 $SPARK_HOME/recovery
 ```
 
-## Step 6: Configure Workers (cpu-node2 and worker-node3)
+## Step 7: Configure Workers (cpu-node2 and worker-node3)
 
 Copy the configuration from master to workers:
 
@@ -240,7 +240,7 @@ ssh spark@192.168.1.187 "mkdir -p $SPARK_HOME/{logs,work,recovery,warehouse} /ho
 ssh spark@192.168.1.190 "mkdir -p $SPARK_HOME/{logs,work,recovery,warehouse} /home/spark/{iceberg-warehouse,delta-warehouse}"
 ```
 
-## Step 7: Create Systemd Services
+## Step 8: Create Systemd Services
 
 ### Spark Master Service (cpu-node1):
 ```bash
@@ -350,7 +350,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-## Step 8: Start Spark Cluster
+## Step 9: Start Spark Cluster
 
 ### Start services:
 ```bash
@@ -375,7 +375,7 @@ sudo systemctl status spark-worker
 sudo systemctl status spark-history
 ```
 
-## Step 9: Firewall Configuration (All Nodes)
+## Step 10: Firewall Configuration (All Nodes)
 
 ```bash
 # Open required ports
