@@ -521,26 +521,53 @@ sudo systemctl restart flink-taskmanager   # On cpu-node2 and worker-node3 (Task
 
 ### Update Trino configuration:
 
+**⚠️ IMPORTANT:** Trino catalog files need **complete configuration** (basic connector + HDFS settings). Simply appending HDFS settings to incomplete catalog files will cause Trino to fail.
+
 Trino needs HDFS access for Iceberg, Delta Lake, and Hive catalogs:
 
+**Update Iceberg catalog for HDFS (if using Iceberg):**
 ```bash
-# Add Hadoop configuration directory to Trino JVM config
-sudo su - trino -c "echo '-Dhadoop.conf.dir=/opt/hadoop/current/etc/hadoop' >> /home/trino/trino/etc/jvm.config"
+# Ensure iceberg catalog has complete configuration
+cat > /tmp/iceberg.properties << 'EOF'
+connector.name=iceberg
+hive.metastore.uri=thrift://192.168.1.184:9083
+iceberg.catalog.type=hadoop
+iceberg.hdfs.config-resources=/opt/hadoop/current/etc/hadoop/core-site.xml,/opt/hadoop/current/etc/hadoop/hdfs-site.xml
+EOF
+
+sudo cp /tmp/iceberg.properties /home/trino/trino/etc/catalog/iceberg.properties
+sudo chown trino:trino /home/trino/trino/etc/catalog/iceberg.properties
 ```
 
-**Update catalog properties for HDFS warehouse locations:**
-
+**Update Hive catalog for HDFS (if using Hive):**
 ```bash
-# Update Iceberg catalog (if configured)
-sudo su - trino -c "echo 'iceberg.hdfs.config-resources=/opt/hadoop/current/etc/hadoop/core-site.xml,/opt/hadoop/current/etc/hadoop/hdfs-site.xml' >> /home/trino/trino/etc/catalog/iceberg.properties"
+# Ensure hive catalog has complete configuration
+cat > /tmp/hive.properties << 'EOF'
+connector.name=hive-hadoop2
+hive.metastore.uri=thrift://192.168.1.184:9083
+hive.hdfs.config-resources=/opt/hadoop/current/etc/hadoop/core-site.xml,/opt/hadoop/current/etc/hadoop/hdfs-site.xml
+EOF
 
-# Update Hive catalog (if configured) 
-sudo su - trino -c "echo 'hive.hdfs.config-resources=/opt/hadoop/current/etc/hadoop/core-site.xml,/opt/hadoop/current/etc/hadoop/hdfs-site.xml' >> /home/trino/trino/etc/catalog/hive.properties"
+sudo cp /tmp/hive.properties /home/trino/trino/etc/catalog/hive.properties
+sudo chown trino:trino /home/trino/trino/etc/catalog/hive.properties
+
+# Clean up temp files
+rm /tmp/iceberg.properties /tmp/hive.properties
 ```
 
 **Restart Trino services:**
 ```bash
 sudo systemctl restart trino  # Only on cpu-node1 (coordinator)
+```
+
+**Verification:**
+```bash
+# Check Trino is running (should show "active (running)")
+sudo systemctl status trino
+
+# Verify catalog configurations are complete
+sudo cat /home/trino/trino/etc/catalog/iceberg.properties
+sudo cat /home/trino/trino/etc/catalog/hive.properties
 ```
 
 ## Troubleshooting

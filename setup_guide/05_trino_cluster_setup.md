@@ -286,6 +286,32 @@ connector.name=tpch
 tpch.splits-per-node=4
 ```
 
+## ⚠️ **IMPORTANT: Lakehouse Catalogs Require Hive Metastore**
+
+**Before creating Iceberg and Delta Lake catalogs below**, you need **Hive Metastore service** running on port 9083.
+
+### **Two Options:**
+
+**Option A: Skip Lakehouse Catalogs (Recommended for basic setup)**
+- Skip the Iceberg and Delta Lake sections below
+- Trino will work with PostgreSQL, Kafka, TPC-H, and Memory catalogs
+- Add lakehouse catalogs later when needed
+
+**Option B: Install Hive Metastore First**
+- Complete **Step 16: Advanced Connectors Setup** (Hive Metastore installation)
+- Then return here to create the catalogs below
+- **Warning:** Creating these catalogs without Hive Metastore will cause Trino startup failures
+
+### **If You Accidentally Create These Catalogs:**
+```bash
+# Disable problematic catalogs
+sudo mv /home/trino/trino/etc/catalog/iceberg.properties /home/trino/trino/etc/catalog/iceberg.properties.disabled
+sudo mv /home/trino/trino/etc/catalog/delta.properties /home/trino/trino/etc/catalog/delta.properties.disabled
+sudo systemctl restart trino
+```
+
+---
+
 ### Iceberg connector (for lakehouse):
 ```bash
 nano /home/trino/trino/etc/catalog/iceberg.properties
@@ -570,6 +596,8 @@ LIMIT 10;
 ## Step 16: Advanced Connectors Setup
 
 ### Hive Metastore (for Iceberg/Delta Lake):
+
+**📍 Note:** After installing Hive Metastore below, you can return to **Step 7** to enable the Iceberg and Delta Lake catalogs that require this service.
 
 First, set up Hive Metastore:
 ```bash
