@@ -447,24 +447,43 @@ chmod +x /home/hadoop/monitor-hdfs.sh
 ## Step 12: Integration with Existing Services  (All Servers)
 
 ### Update Spark configuration:
+
+Spark needs HDFS access for distributed lakehouse storage:
+
+```bash
+# Add HDFS configuration to Spark defaults
+sudo su - spark -c "echo 'spark.hadoop.fs.defaultFS                hdfs://192.168.1.184:9000' >> /home/spark/spark/conf/spark-defaults.conf"
+sudo su - spark -c "echo 'spark.sql.warehouse.dir                  hdfs://192.168.1.184:9000/lakehouse' >> /home/spark/spark/conf/spark-defaults.conf"
+```
+
+**Alternatively, if you prefer manual editing:**
 ```bash
 # Add to spark-defaults.conf
 nano /home/spark/spark/conf/spark-defaults.conf
 ```
 
-Add:
+Add these properties:
 ```properties
 spark.hadoop.fs.defaultFS                hdfs://192.168.1.184:9000
 spark.sql.warehouse.dir                  hdfs://192.168.1.184:9000/lakehouse
 ```
 
 ### Update Flink configuration:
+
+Flink needs HDFS access for distributed lakehouse storage:
+
+```bash
+# Add HDFS configuration to Flink config
+sudo su - flink -c "echo 'fs.hdfs.hadoop.conf.dir: /opt/hadoop/current/etc/hadoop' >> /home/flink/flink/conf/flink-conf.yaml"
+```
+
+**Alternatively, if you prefer manual editing:**
 ```bash
 # Add to flink-conf.yaml
 nano /home/flink/flink/conf/flink-conf.yaml
 ```
 
-Add:
+Add this property:
 ```yaml
 fs.hdfs.hadoop.conf.dir: /opt/hadoop/current/etc/hadoop
 ```
