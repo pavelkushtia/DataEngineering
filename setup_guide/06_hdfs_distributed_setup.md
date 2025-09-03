@@ -468,6 +468,14 @@ spark.hadoop.fs.defaultFS                hdfs://192.168.1.184:9000
 spark.sql.warehouse.dir                  hdfs://192.168.1.184:9000/lakehouse
 ```
 
+**Restart Spark services:**
+```bash
+# Restart Spark services on all nodes
+sudo systemctl restart spark-master    # Only on cpu-node1 (master)
+sudo systemctl restart spark-worker    # On cpu-node2 and worker-node3
+sudo systemctl restart spark-history   # Only on cpu-node1 (history server)
+```
+
 ### Update Flink configuration:
 
 Flink needs HDFS access for distributed lakehouse storage:
@@ -486,6 +494,13 @@ nano /home/flink/flink/conf/flink-conf.yaml
 Add this property:
 ```yaml
 fs.hdfs.hadoop.conf.dir: /opt/hadoop/current/etc/hadoop
+```
+
+**Restart Flink services:**
+```bash
+# Restart Flink services on all nodes
+sudo systemctl restart flink-jobmanager    # Only on cpu-node1 (JobManager)
+sudo systemctl restart flink-taskmanager   # On cpu-node2 and worker-node3 (TaskManagers)
 ```
 
 ### Update Trino configuration:
