@@ -572,7 +572,8 @@ Type=simple
 User=kafka
 Group=kafka
 Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-ExecStart=/usr/bin/java -jar /opt/kafdrop-3.31.0.jar --kafka.brokerConnect=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --server.port=9001
+ExecStart=/usr/bin/java -jar /opt/kafdrop-3.31.0.jar --kafka.brokerConnect=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --server.port=9001 --management.server.port=9001
+# Note: --management.server.port=9001 prevents Kafdrop from using port 9000 (needed by HDFS NameNode)
 Restart=on-failure
 RestartSec=10s
 
@@ -749,7 +750,8 @@ Type=simple
 User=kafka
 Group=kafka
 Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-ExecStart=/usr/bin/java -jar /opt/kafdrop-3.31.0.jar --kafka.brokerConnect=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --server.port=9001
+ExecStart=/usr/bin/java -jar /opt/kafdrop-3.31.0.jar --kafka.brokerConnect=192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092 --server.port=9001 --management.server.port=9001
+# Note: --management.server.port=9001 prevents Kafdrop from using port 9000 (needed by HDFS NameNode)
 Restart=on-failure
 RestartSec=10s
 

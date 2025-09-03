@@ -1,0 +1,44 @@
+# Python BUILD file for Kafka-Cassandra interaction building blocks
+
+package(default_visibility = ["//visibility:public"])
+
+# Python library with common Kafka-Cassandra utilities
+py_library(
+    name = "kafka_cassandra_common",
+    srcs = ["kafka_cassandra_common.py"],
+    deps = [],
+)
+
+# Stream processing pipeline example
+py_binary(
+    name = "stream_processor",
+    srcs = ["stream_processor.py"],
+    deps = [":kafka_cassandra_common"],
+    main = "stream_processor.py",
+)
+
+# Event sourcing example
+py_binary(
+    name = "event_sourcing",
+    srcs = ["event_sourcing.py"],
+    deps = [":kafka_cassandra_common"],
+    main = "event_sourcing.py",
+)
+
+# Time-series ingestion example
+py_binary(
+    name = "timeseries_ingestion",
+    srcs = ["timeseries_ingestion.py"],
+    deps = [":kafka_cassandra_common"],
+    main = "timeseries_ingestion.py",
+)
+
+# Aggregate target for all Python Kafka-Cassandra examples
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":stream_processor",
+        ":event_sourcing",
+        ":timeseries_ingestion",
+    ],
+)

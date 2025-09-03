@@ -1,0 +1,57 @@
+# C++ BUILD file for Cassandra building block apps
+
+package(default_visibility = ["//visibility:public"])
+
+# C++ library with common Cassandra utilities
+cc_library(
+    name = "cassandra_common",
+    srcs = ["cassandra_common.cpp"],
+    hdrs = ["cassandra_common.h"],
+    deps = [
+        "@cassandra_cpp_driver//:cassandra",
+    ],
+    copts = ["-std=c++17"],
+)
+
+# Basic Cassandra operations example
+cc_binary(
+    name = "basic_operations",
+    srcs = ["basic_operations.cpp"],
+    deps = [":cassandra_common"],
+    copts = ["-std=c++17"],
+)
+
+# Time-series data operations example
+cc_binary(
+    name = "timeseries_operations",
+    srcs = ["timeseries_operations.cpp"],
+    deps = [":cassandra_common"],
+    copts = ["-std=c++17"],
+)
+
+# Advanced querying examples
+cc_binary(
+    name = "advanced_queries",
+    srcs = ["advanced_queries.cpp"],
+    deps = [":cassandra_common"],
+    copts = ["-std=c++17"],
+)
+
+# Performance testing and benchmarks
+cc_binary(
+    name = "performance_test",
+    srcs = ["performance_test.cpp"],
+    deps = [":cassandra_common"],
+    copts = ["-std=c++17"],
+)
+
+# Aggregate target for all C++ Cassandra examples
+filegroup(
+    name = "all_cpp_examples",
+    srcs = [
+        ":basic_operations",
+        ":timeseries_operations",
+        ":advanced_queries",
+        ":performance_test",
+    ],
+)

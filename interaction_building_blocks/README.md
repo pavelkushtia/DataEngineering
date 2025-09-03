@@ -28,6 +28,10 @@ interaction_building_blocks/
 ├── spark-redis/         ← Distributed caching: Spark + Redis integration
 ├── flink-redis/         ← Stream state management: Flink + Redis backend
 ├── kafka-redis/         ← Event caching: Kafka → Redis pub/sub bridge
+├── kafka-cassandra/     ← High-throughput streaming: Kafka → Cassandra ingestion
+├── spark-cassandra/     ← Big data analytics: Spark → Cassandra integration
+├── flink-cassandra/     ← Stream processing: Flink → Cassandra sink
+├── cassandra-postgresql/ ← Multi-model data: Cassandra + PostgreSQL hybrid
 └── README.md            ← This file
 ```
 
@@ -38,15 +42,16 @@ interaction_building_blocks/
 ### **Prerequisites**
 ```bash
 # Install all dependencies from building_block_apps
-pip install kafka-python psycopg2-binary redis hiredis trino requests pyflink
+pip install kafka-python psycopg2-binary redis hiredis trino requests pyflink cassandra-driver
 
 # Ensure all cluster components are running
 # - Kafka cluster (ports 9092)
 # - Spark cluster (port 7077)
 # - Flink cluster (port 8081)
 # - PostgreSQL (port 5432)
-# - Trino (port 8081)
+# - Trino (port 8084)
 # - Redis (port 6379)
+# - Cassandra cluster (port 9042)
 ```
 
 ### **Build Everything**
@@ -71,6 +76,12 @@ bazel run //trino-postgresql/python:federated_analytics -- --query-type aggregat
 
 # Real-time analytics: Kafka → Trino
 bazel run //kafka-trino/python:streaming_analytics -- --topic metrics --window-minutes 5
+
+# High-throughput streaming: Kafka → Cassandra
+bazel run //kafka-cassandra/python:stream_processor -- --topics events --batch-size 1000
+
+# Big data analytics: Spark → Cassandra
+bazel run //spark-cassandra/python:analytics_pipeline -- --input-path /tmp/data --keyspace analytics
 ```
 
 ---
@@ -402,6 +413,128 @@ bazel run //kafka-redis/python:pubsub_bridge -- \
 
 ---
 
+### ✅ **Kafka ↔ Cassandra (High-Throughput Streaming)**
+
+**Pattern**: Real-time event streaming to NoSQL storage  
+**Use Case**: Time-series data ingestion, event sourcing, high-volume logging  
+**Languages**: Python, Java, C++  
+**Build Targets**: `//kafka-cassandra/python:*`, `//kafka-cassandra/java:*`, `//kafka-cassandra/cpp:*`
+
+#### **Features**
+- **High-Throughput Ingestion**: Optimized for millions of events per second
+- **Time-Series Modeling**: Efficient Cassandra schemas for time-based data
+- **Event Sourcing**: Complete event history with replay capabilities  
+- **Batch Processing**: Configurable batch sizes for optimal performance
+- **Schema Evolution**: Handle evolving event schemas gracefully
+- **Load Balancing**: Distribute writes across Cassandra cluster nodes
+
+#### **Quick Examples**
+
+**Stream Processor (Python)**:
+```bash
+# Real-time event streaming with high throughput
+bazel run //kafka-cassandra/python:stream_processor -- \
+    --kafka-topics user-events,system-metrics \
+    --batch-size 1000 \
+    --keyspace streaming_analytics
+```
+
+**Event Sourcing (Java)**:
+```bash
+# Event sourcing with replay capabilities
+bazel run //kafka-cassandra/java:EventSourcing -- \
+    --input-topic events \
+    --event-store-keyspace event_store \
+    --enable-replay
+```
+
+---
+
+### ✅ **Spark ↔ Cassandra (Big Data Analytics)**
+
+**Pattern**: Large-scale data processing with NoSQL persistence  
+**Use Case**: ETL pipelines, data warehousing, historical analytics  
+**Languages**: Python, Java, C++  
+**Build Targets**: `//spark-cassandra/python:*`, `//spark-cassandra/java:*`, `//spark-cassandra/cpp:*`
+
+#### **Features**
+- **Spark-Cassandra Connector**: Native integration with optimized read/write
+- **Distributed Processing**: Parallel processing across Spark and Cassandra clusters
+- **Advanced Analytics**: Complex aggregations and time-series analysis
+- **Schema Management**: Automatic table creation and schema evolution
+- **Partition Optimization**: Intelligent data partitioning for performance
+- **Bulk Operations**: Efficient bulk loading and extraction
+
+#### **Quick Examples**
+
+**Analytics Pipeline (Python)**:
+```bash
+# Large-scale data processing with Cassandra
+bazel run //spark-cassandra/python:analytics_pipeline -- \
+    --input-format parquet \
+    --input-path /tmp/historical_data \
+    --output-keyspace analytics \
+    --output-table processed_metrics
+```
+
+---
+
+### ✅ **Flink ↔ Cassandra (Stream Processing Sink)**
+
+**Pattern**: Real-time stream processing with NoSQL sink  
+**Use Case**: Real-time dashboards, continuous analytics, stream aggregation  
+**Languages**: Python, Java, C++  
+**Build Targets**: `//flink-cassandra/python:*`, `//flink-cassandra/java:*`, `//flink-cassandra/cpp:*`
+
+#### **Features**
+- **Real-time Sinks**: Stream processing results directly to Cassandra
+- **Windowed Aggregations**: Time-based and session-based windowing
+- **Exactly-Once Semantics**: Consistent writes with checkpointing
+- **Dynamic Schema**: Handle changing data structures in streams
+- **Performance Monitoring**: Track sink performance and backpressure
+- **Auto-scaling**: Dynamic scaling based on throughput requirements
+
+#### **Quick Examples**
+
+**Stream Sink (Python)**:
+```bash
+# Stream processing with Cassandra sink
+bazel run //flink-cassandra/python:stream_sink -- \
+    --input-topic sensor-data \
+    --sink-table real_time_metrics \
+    --window-minutes 5
+```
+
+---
+
+### ✅ **Cassandra ↔ PostgreSQL (Multi-Model Data)**
+
+**Pattern**: Hybrid NoSQL + relational data architecture  
+**Use Case**: OLTP + OLAP workloads, data synchronization, multi-model queries  
+**Languages**: Python, Java, C++  
+**Build Targets**: `//cassandra-postgresql/python:*`, `//cassandra-postgresql/java:*`, `//cassandra-postgresql/cpp:*`
+
+#### **Features**
+- **Data Synchronization**: Bi-directional sync between NoSQL and relational data
+- **Multi-Model Queries**: Join data across different database paradigms
+- **CQRS Implementation**: Command-Query Responsibility Segregation patterns
+- **Data Migration**: Tools for moving data between Cassandra and PostgreSQL
+- **Consistency Management**: Handle different consistency models
+- **Performance Optimization**: Query routing and caching strategies
+
+#### **Quick Examples**
+
+**Data Sync (Python)**:
+```bash
+# Synchronize data between Cassandra and PostgreSQL
+bazel run //cassandra-postgresql/python:data_sync -- \
+    --sync-direction bidirectional \
+    --tables users,events,metrics \
+    --batch-size 5000
+```
+
+---
+
 ## 🛠️ **Build System Details**
 
 ### **Bazel Integration**
@@ -556,6 +689,10 @@ bazel run //kafka-flink/python:stream_processor -- \
 - ✅ Spark ↔ Redis (Distributed caching)
 - ✅ Flink ↔ Redis (State management)
 - ✅ Kafka ↔ Redis (Event caching)
+- ✅ Kafka ↔ Cassandra (High-throughput streaming)
+- ✅ Spark ↔ Cassandra (Big data analytics)
+- ✅ Flink ↔ Cassandra (Stream processing sink)
+- ✅ Cassandra ↔ PostgreSQL (Multi-model data)
 
 ### **Phase 2: Advanced Interactions** (Next 3-6 months)
 - **Multi-hop Pipelines**: Kafka → Flink → PostgreSQL → Trino

@@ -27,6 +27,7 @@ HDFS (Hadoop Distributed File System) will provide distributed storage for your 
 # Create hadoop user
 sudo useradd -m -s /bin/bash hadoop
 sudo passwd hadoop
+sudo usermod -aG sudo hadoop
 
 # Create HDFS directories
 sudo mkdir -p /opt/hadoop
@@ -322,9 +323,71 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-### Enable and start services:
+### ⚠️ **IMPORTANT: Choose ONE Method**
+
+You have **two ways** to manage Hadoop services. **DO NOT MIX BOTH METHODS** - they will conflict!
+
+#### **Option A: Systemd Services (Recommended for Production)**
+✅ **Advantages:**
+- Auto-starts on boot
+- Auto-restarts if crashes  
+- Standard Linux service management
+- Easier monitoring and logging
+
 ```bash
-# Enable services
+# NameNode (only on cpu-node1)
+sudo systemctl start hadoop-namenode
+sudo systemctl stop hadoop-namenode  
+sudo systemctl status hadoop-namenode
+
+# DataNode (on all nodes)
+sudo systemctl start hadoop-datanode
+sudo systemctl stop hadoop-datanode
+sudo systemctl status hadoop-datanode
+```
+
+#### **Option B: Hadoop Scripts (Manual Control)**
+✅ **Advantages:**
+- Direct Hadoop control
+- Traditional Hadoop management
+- More granular control
+
+```bash
+# NameNode (only on cpu-node1)
+sudo su - hadoop -c "bin/hdfs --daemon start namenode"
+sudo su - hadoop -c "bin/hdfs --daemon stop namenode"
+
+# DataNode (on all nodes)  
+sudo su - hadoop -c "bin/hdfs --daemon start datanode"
+sudo su - hadoop -c "bin/hdfs --daemon stop datanode"
+```
+
+#### **❌ Switching Between Methods:**
+If you need to switch, **always stop the current method first**:
+
+```bash
+# If switching FROM scripts TO systemd:
+sudo su - hadoop -c "bin/hdfs --daemon stop namenode"
+sudo su - hadoop -c "bin/hdfs --daemon stop datanode"  # On all nodes
+sudo systemctl start hadoop-namenode   # Only on cpu-node1
+sudo systemctl start hadoop-datanode   # On all nodes
+
+# If switching FROM systemd TO scripts:
+sudo systemctl stop hadoop-namenode    # Only on cpu-node1
+sudo systemctl stop hadoop-datanode    # On all nodes
+sudo su - hadoop -c "bin/hdfs --daemon start namenode"  # Only on cpu-node1
+sudo su - hadoop -c "bin/hdfs --daemon start datanode"  # On all nodes
+```
+
+**🎯 Recommendation:** Use **systemd services** for production environments.
+
+---
+
+### Enable and start services (Systemd Method):
+
+**For fresh installation (services not running):**
+```bash
+# Reload systemd configuration and enable services
 sudo systemctl daemon-reload
 sudo systemctl enable hadoop-namenode  # Only on cpu-node1
 sudo systemctl enable hadoop-datanode  # On all nodes
@@ -333,6 +396,20 @@ sudo systemctl enable hadoop-datanode  # On all nodes
 sudo systemctl start hadoop-namenode   # Only on cpu-node1
 sudo systemctl start hadoop-datanode   # On all nodes
 ```
+
+**For updating existing services (if already running):**
+```bash
+# Reload systemd configuration
+sudo systemctl daemon-reload
+
+# Restart services to apply new configuration
+sudo systemctl restart hadoop-namenode   # Only on cpu-node1
+sudo systemctl restart hadoop-datanode   # On all nodes
+```
+
+**💡 Key Difference:**
+- `start` = Only starts if not running (ignores new config if already running)
+- `restart` = Stops and starts (applies new configuration)
 
 ## Step 11: Monitoring and Maintenance
 
@@ -367,7 +444,7 @@ hdfs dfs -ls /lakehouse/
 chmod +x /home/hadoop/monitor-hdfs.sh
 ```
 
-## Step 12: Integration with Existing Services
+## Step 12: Integration with Existing Services  (All Servers)
 
 ### Update Spark configuration:
 ```bash
@@ -390,6 +467,30 @@ nano /home/flink/flink/conf/flink-conf.yaml
 Add:
 ```yaml
 fs.hdfs.hadoop.conf.dir: /opt/hadoop/current/etc/hadoop
+```
+
+### Update Trino configuration:
+
+Trino needs HDFS access for Iceberg, Delta Lake, and Hive catalogs:
+
+```bash
+# Add Hadoop configuration directory to Trino JVM config
+sudo su - trino -c "echo '-Dhadoop.conf.dir=/opt/hadoop/current/etc/hadoop' >> /home/trino/trino/etc/jvm.config"
+```
+
+**Update catalog properties for HDFS warehouse locations:**
+
+```bash
+# Update Iceberg catalog (if configured)
+sudo su - trino -c "echo 'iceberg.hdfs.config-resources=/opt/hadoop/current/etc/hadoop/core-site.xml,/opt/hadoop/current/etc/hadoop/hdfs-site.xml' >> /home/trino/trino/etc/catalog/iceberg.properties"
+
+# Update Hive catalog (if configured) 
+sudo su - trino -c "echo 'hive.hdfs.config-resources=/opt/hadoop/current/etc/hadoop/core-site.xml,/opt/hadoop/current/etc/hadoop/hdfs-site.xml' >> /home/trino/trino/etc/catalog/hive.properties"
+```
+
+**Restart Trino services:**
+```bash
+sudo systemctl restart trino  # Only on cpu-node1 (coordinator)
 ```
 
 ## Troubleshooting

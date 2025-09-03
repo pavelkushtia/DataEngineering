@@ -1,0 +1,57 @@
+# Java BUILD file for Cassandra building block apps
+
+package(default_visibility = ["//visibility:public"])
+
+# Java library with common Cassandra utilities
+java_library(
+    name = "cassandra_common",
+    srcs = ["CassandraCommon.java"],
+    deps = [
+        "@maven//:com_datastax_oss_java_driver_core",
+        "@maven//:com_datastax_oss_java_driver_query_builder",
+        "@maven//:com_datastax_oss_java_driver_mapper_runtime",
+    ],
+)
+
+# Basic Cassandra operations example
+java_binary(
+    name = "BasicOperations",
+    srcs = ["BasicOperations.java"],
+    deps = [":cassandra_common"],
+    main_class = "BasicOperations",
+)
+
+# Time-series data operations example
+java_binary(
+    name = "TimeseriesOperations",
+    srcs = ["TimeseriesOperations.java"],
+    deps = [":cassandra_common"],
+    main_class = "TimeseriesOperations",
+)
+
+# Advanced querying examples
+java_binary(
+    name = "AdvancedQueries",
+    srcs = ["AdvancedQueries.java"],
+    deps = [":cassandra_common"],
+    main_class = "AdvancedQueries",
+)
+
+# Performance testing and benchmarks
+java_binary(
+    name = "PerformanceTest",
+    srcs = ["PerformanceTest.java"],
+    deps = [":cassandra_common"],
+    main_class = "PerformanceTest",
+)
+
+# Aggregate target for all Java Cassandra examples
+filegroup(
+    name = "all_java_examples",
+    srcs = [
+        ":BasicOperations",
+        ":TimeseriesOperations",
+        ":AdvancedQueries", 
+        ":PerformanceTest",
+    ],
+)

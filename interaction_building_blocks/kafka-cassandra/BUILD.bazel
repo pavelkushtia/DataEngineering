@@ -1,0 +1,29 @@
+# Main BUILD file for Kafka-Cassandra interaction building blocks
+
+package(default_visibility = ["//visibility:public"])
+
+# Aggregate target for all Kafka-Cassandra interaction examples
+filegroup(
+    name = "all_kafka_cassandra_examples",
+    srcs = [
+        "//kafka-cassandra/python:all_python_examples",
+        "//kafka-cassandra/java:all_java_examples",
+        "//kafka-cassandra/cpp:all_cpp_examples",
+    ],
+)
+
+# Language-specific aggregates
+alias(
+    name = "python_examples",
+    actual = "//kafka-cassandra/python:all_python_examples",
+)
+
+alias(
+    name = "java_examples", 
+    actual = "//kafka-cassandra/java:all_java_examples",
+)
+
+alias(
+    name = "cpp_examples",
+    actual = "//kafka-cassandra/cpp:all_cpp_examples",
+)

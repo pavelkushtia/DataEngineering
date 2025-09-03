@@ -11,20 +11,46 @@ This guide sets up Apache Iceberg with distributed HDFS storage and integrations
 
 ### Step 1: Update Iceberg for HDFS Storage
 
+**⚠️ IMPORTANT: Run on ALL THREE NODES (cpu-node1, cpu-node2, worker-node3)**
+
+**Why all nodes?**
+- Spark workers on all nodes need Iceberg runtime JARs
+- Flink TaskManagers on all nodes need Iceberg runtime JARs  
+- All nodes may run Iceberg clients for distributed processing
+
+#### **Commands to run on each node:**
+
+**On cpu-node1 (192.168.1.184):**
 ```bash
 # Create new distributed workspace
 mkdir -p /home/sanzad/iceberg-distributed
 cd /home/sanzad/iceberg-distributed
 
 # Create required directories
-mkdir -p libs
-mkdir -p conf
-mkdir -p scripts
-mkdir -p notebooks
-mkdir -p logs
+mkdir -p libs conf scripts notebooks logs
 ```
 
-### Download enhanced JAR files:
+**On cpu-node2 (192.168.1.187):**
+```bash
+# SSH into cpu-node2 and repeat setup
+ssh sanzad@192.168.1.187
+mkdir -p /home/sanzad/iceberg-distributed
+cd /home/sanzad/iceberg-distributed
+mkdir -p libs conf scripts notebooks logs
+```
+
+**On worker-node3 (192.168.1.190):**
+```bash
+# SSH into worker-node3 and repeat setup  
+ssh sanzad@192.168.1.190
+mkdir -p /home/sanzad/iceberg-distributed
+cd /home/sanzad/iceberg-distributed
+mkdir -p libs conf scripts notebooks logs
+```
+
+#### **Download JAR files on ALL THREE NODES:**
+
+**Run these commands on each node (cpu-node1, cpu-node2, worker-node3):**
 ```bash
 cd /home/sanzad/iceberg-distributed/libs
 
@@ -42,11 +68,38 @@ wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar
 wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.367/aws-java-sdk-bundle-1.12.367.jar
 ```
 
+**Verify downloads on each node:**
+```bash
+ls -la /home/sanzad/iceberg-distributed/libs/
+# Should show 5 JAR files on each node
+```
+
 ### Step 2: Distributed Spark Configuration
 
+**⚠️ IMPORTANT: Configuration needed on ALL THREE NODES**
+
+**Why all nodes?** All nodes run Spark workers that need Iceberg configuration for distributed processing.
+
+#### **Create configuration file on each node:**
+
+**On cpu-node1 (192.168.1.184):**
 ```bash
 nano /home/sanzad/iceberg-distributed/conf/spark-iceberg-distributed.conf
 ```
+
+**On cpu-node2 (192.168.1.187):**
+```bash
+ssh sanzad@192.168.1.187
+nano /home/sanzad/iceberg-distributed/conf/spark-iceberg-distributed.conf
+```
+
+**On worker-node3 (192.168.1.190):**
+```bash
+ssh sanzad@192.168.1.190
+nano /home/sanzad/iceberg-distributed/conf/spark-iceberg-distributed.conf
+```
+
+#### **Configuration content (same on all nodes):**
 
 ```properties
 # Spark configuration for distributed Iceberg
@@ -151,6 +204,12 @@ chmod +x /home/sanzad/iceberg-distributed/start-spark-iceberg-distributed.sh
 
 ### Step 3: Test Distributed Setup
 
+**⚠️ IMPORTANT: Run test on COORDINATOR NODE (cpu-node1)**
+
+**Why cpu-node1?** The Spark Master runs on cpu-node1, and it will coordinate distributed processing across all worker nodes.
+
+#### **Test commands to run on cpu-node1 (192.168.1.184):**
+
 ```bash
 # Start distributed Spark session
 cd /home/sanzad/iceberg-distributed
@@ -215,7 +274,12 @@ spark.sql("SELECT * FROM iceberg_hive.lakehouse.distributed_events.files").show(
 
 ### Step 4: Configure Trino for Iceberg
 
-Update Trino's Iceberg catalog configuration:
+**⚠️ IMPORTANT: Configure Trino ONLY on COORDINATOR NODE (cpu-node1)**
+
+**Why cpu-node1 only?** Trino coordinator runs only on cpu-node1, and worker nodes connect to it.
+
+#### **Update Trino configuration on cpu-node1 (192.168.1.184):**
+
 ```bash
 # Update existing iceberg.properties
 sudo nano /home/trino/trino/etc/catalog/iceberg.properties
@@ -268,11 +332,38 @@ SHOW CREATE TABLE distributed_events;
 
 ### Step 5: Configure Flink for Iceberg Streaming
 
+**⚠️ IMPORTANT: Configure Flink on ALL THREE NODES**
+
+**Why all nodes?**
+- JobManager on cpu-node1 needs configuration
+- TaskManagers on all nodes (cpu-node2, worker-node3) need JARs for distributed processing
+
+#### **Copy JARs on all nodes:**
+
+**On cpu-node1 (192.168.1.184):**
 ```bash
 # Copy Iceberg Flink JAR to Flink lib directory
 sudo cp /home/sanzad/iceberg-distributed/libs/iceberg-flink-runtime-1.19-1.9.2.jar /home/flink/flink/lib/
 sudo cp /home/sanzad/iceberg-distributed/libs/hadoop-client-3.3.6.jar /home/flink/flink/lib/
+```
 
+**On cpu-node2 (192.168.1.187):**
+```bash
+ssh sanzad@192.168.1.187
+sudo cp /home/sanzad/iceberg-distributed/libs/iceberg-flink-runtime-1.19-1.9.2.jar /home/flink/flink/lib/
+sudo cp /home/sanzad/iceberg-distributed/libs/hadoop-client-3.3.6.jar /home/flink/flink/lib/
+```
+
+**On worker-node3 (192.168.1.190):**
+```bash
+ssh sanzad@192.168.1.190
+sudo cp /home/sanzad/iceberg-distributed/libs/iceberg-flink-runtime-1.19-1.9.2.jar /home/flink/flink/lib/
+sudo cp /home/sanzad/iceberg-distributed/libs/hadoop-client-3.3.6.jar /home/flink/flink/lib/
+```
+
+#### **Update Flink configuration (ONLY on cpu-node1 - JobManager):**
+
+```bash
 # Update Flink configuration
 sudo nano /home/flink/flink/conf/flink-conf.yaml
 ```
@@ -386,6 +477,12 @@ if __name__ == "__main__":
 ## Phase 4: Python Analytics Integration
 
 ### Step 6: Enhanced Python Setup
+
+**⚠️ IMPORTANT: Install on COORDINATOR NODE (cpu-node1) for analysis**
+
+**Why cpu-node1?** Python analytics typically run from the coordinator node where you have direct access to cluster management and can efficiently coordinate distributed queries.
+
+#### **Install Python dependencies on cpu-node1 (192.168.1.184):**
 
 ```bash
 # Install PyIceberg and additional dependencies
@@ -618,6 +715,12 @@ if __name__ == "__main__":
 ## Phase 5: Multi-Engine Coordination
 
 ### Step 7: Multi-Engine Coordination Patterns
+
+**⚠️ IMPORTANT: Create orchestration script on COORDINATOR NODE (cpu-node1)**
+
+**Why cpu-node1?** Multi-engine coordination requires orchestrating Spark, Trino, and Flink from a central location with access to all cluster services.
+
+#### **Create coordination script on cpu-node1 (192.168.1.184):**
 
 ```bash
 nano /home/sanzad/iceberg-distributed/scripts/multi_engine_coordination.py
@@ -1139,3 +1242,4 @@ For the complete local setup guide including integration examples, Python setup,
 5. **Security**: Add authentication, authorization, and encryption
 
 This local setup provides a solid foundation for learning Iceberg concepts and can easily be extended for production use cases.
+

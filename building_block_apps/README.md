@@ -23,6 +23,7 @@ building_block_apps/
 ├── postgresql/      ← Database operations and advanced queries (complete)
 ├── trino/           ← Federated queries and performance analysis (complete)
 ├── redis/           ← Caching, pub/sub, and Redis operations (complete)
+├── cassandra/       ← NoSQL wide-column store operations (complete)
 └── integration/     ← Multi-component examples (future)
 ```
 
@@ -40,7 +41,7 @@ sudo apt install bazel
 sudo apt install python3-pip default-jdk librdkafka-dev postgresql-client
 
 # Install Python libraries for all components
-pip install kafka-python psycopg2-binary redis hiredis trino requests
+pip install kafka-python psycopg2-binary redis hiredis trino requests cassandra-driver
 ```
 
 ### **Build Everything**
@@ -68,6 +69,9 @@ bazel run //trino/python:federated_queries -- --include-all
 
 # Redis: Basic Caching
 bazel run //redis/python:basic_caching -- --operations all
+
+# Cassandra: Basic Operations
+bazel run //cassandra/python:basic_operations -- --create-tables --insert-data
 ```
 
 ---
@@ -365,6 +369,76 @@ bazel run //redis/python:pubsub_messaging -- \
 
 ---
 
+### ✅ **Cassandra (Complete)**
+
+**Languages**: Python, Java, C++  
+**Build Targets**: `//cassandra/python:*`, `//cassandra/java:*`, `//cassandra/cpp:*`
+
+#### **Features**
+- **NoSQL Data Modeling**: Wide-column store patterns for scalable data storage
+- **Time-Series Operations**: Optimized schemas for time-series data and analytics
+- **High-Throughput Writes**: Batch operations and prepared statements for performance
+- **Distributed Queries**: Cross-node query execution with load balancing
+- **Advanced Data Types**: Collections, UDTs, counters, and TTL support
+- **Connection Pooling**: Efficient connection management for high-concurrency applications
+
+#### **Quick Examples**
+
+**Basic Operations (Python)**:
+```bash
+# Complete CRUD operations with sample data
+bazel run //cassandra/python:basic_operations -- \
+    --create-tables --insert-data \
+    --operations all
+```
+
+**Time-Series Operations (Python)**:
+```bash
+# Time-series data modeling and querying
+bazel run //cassandra/python:timeseries_operations -- \
+    --time-range 7days --batch-size 1000
+```
+
+**Advanced Queries (Java)**:
+```bash
+# Complex queries with prepared statements
+bazel run //cassandra/java:AdvancedQueries -- \
+    --query-type analytics --parallelism 4
+```
+
+**Performance Testing (Python)**:
+```bash
+# Benchmark operations for throughput testing
+bazel run //cassandra/python:performance_test -- \
+    --operations 10000 --batch-size 100 --threads 8
+```
+
+#### **Integration with Existing Setup**
+All Cassandra examples are pre-configured for the distributed Cassandra cluster from [`15_cassandra_distributed_setup.md`](../setup_guide/15_cassandra_distributed_setup.md):
+
+```properties
+# Cassandra cluster configuration
+cassandra.hosts=192.168.1.184,192.168.1.187,192.168.1.190
+cassandra.port=9042
+cassandra.keyspace=homelab_analytics
+
+# Load balancing and performance
+cassandra.load_balancing=DCAwareRoundRobinPolicy
+cassandra.consistency=LOCAL_QUORUM
+cassandra.max_connections_per_host=8
+```
+
+#### **Data Modeling Patterns**
+- **Wide-Row Pattern**: Efficient storage for user timelines and activity logs
+- **Time-Series Pattern**: Optimized schemas for metrics and event data
+- **Counter Pattern**: Distributed counters for real-time analytics
+- **Materialized Views**: Denormalized views for query optimization
+
+#### **Architecture Comparison**
+- **Python**: Rapid development with cassandra-driver, ideal for analytics
+- **Java**: Production robustness with DataStax driver, enterprise integration
+- **C++**: High-performance applications, system-level integration
+
 ### 🔜 **Planned Components**
 
 #### **Neo4j** (Coming Soon)
@@ -400,11 +474,13 @@ bazel build //flink:all_flink_examples
 bazel build //postgresql:all_postgresql_examples
 bazel build //trino:all_trino_examples
 bazel build //redis:all_redis_examples
+bazel build //cassandra:all_cassandra_examples
 
 # Build specific language for a component
 bazel build //kafka/python:all_python_examples
 bazel build //spark/java:all_java_examples  
 bazel build //flink/cpp:all_cpp_examples
+bazel build //cassandra/python:all_python_examples
 
 # Run with arguments
 bazel run //kafka/python:producer -- --help
@@ -522,6 +598,17 @@ port=6379
 # Database selection (0-15)
 ```
 
+#### **Cassandra Configuration**
+From [`15_cassandra_distributed_setup.md`](../setup_guide/15_cassandra_distributed_setup.md):
+```properties
+# Cassandra cluster
+hosts=192.168.1.184,192.168.1.187,192.168.1.190
+port=9042
+keyspace=homelab_analytics
+# Load balancing and consistency
+consistency_level=LOCAL_QUORUM
+```
+
 ### **Customizing Configuration**
 Each component provides configuration utilities in all languages:
 
@@ -530,7 +617,8 @@ Each component provides configuration utilities in all languages:
 **Flink**: `flink_common.py/java/cpp` - Job and cluster configurations  
 **PostgreSQL**: `postgresql_common.py/java/cpp` - Database connection pooling  
 **Trino**: `trino_common.py/java/cpp` - Catalog and query configurations  
-**Redis**: `redis_common.py/java/cpp` - Connection pooling and cache settings
+**Redis**: `redis_common.py/java/cpp` - Connection pooling and cache settings  
+**Cassandra**: `cassandra_common.py/java/cpp` - Cluster connection and NoSQL patterns
 
 ### **Environment-Specific Settings**
 ```bash
@@ -574,6 +662,9 @@ bazel run //postgresql/python:basic_operations -- --create-tables --operations a
 
 # Redis testing
 bazel run //redis/python:basic_caching -- --benchmark --operations all
+
+# Cassandra testing
+bazel run //cassandra/python:basic_operations -- --create-tables --operations all
 ```
 
 ### **Performance Testing**
@@ -607,6 +698,7 @@ bazel run //kafka/python:producer -- --topic test --count 100
 - ✅ PostgreSQL (Complete)
 - ✅ Trino (Complete)
 - ✅ Redis (Complete)
+- ✅ Cassandra (Complete)
 
 ### **Phase 2: Advanced Components** (Next 3-6 months)
 - Neo4j graph database

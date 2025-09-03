@@ -1,0 +1,29 @@
+# Main BUILD file for Cassandra building block apps
+
+package(default_visibility = ["//visibility:public"])
+
+# Aggregate target for all Cassandra examples across languages
+filegroup(
+    name = "all_cassandra_examples",
+    srcs = [
+        "//cassandra/python:all_python_examples",
+        "//cassandra/java:all_java_examples",
+        "//cassandra/cpp:all_cpp_examples",
+    ],
+)
+
+# Language-specific aggregates
+alias(
+    name = "python_examples",
+    actual = "//cassandra/python:all_python_examples",
+)
+
+alias(
+    name = "java_examples",
+    actual = "//cassandra/java:all_java_examples",
+)
+
+alias(
+    name = "cpp_examples",
+    actual = "//cassandra/cpp:all_cpp_examples",
+)

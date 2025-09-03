@@ -1,0 +1,53 @@
+# Python BUILD file for Cassandra building block apps
+
+package(default_visibility = ["//visibility:public"])
+
+# Python library with common Cassandra utilities
+py_library(
+    name = "cassandra_common",
+    srcs = ["cassandra_common.py"],
+    deps = [],
+)
+
+# Basic Cassandra operations example
+py_binary(
+    name = "basic_operations",
+    srcs = ["basic_operations.py"],
+    deps = [":cassandra_common"],
+    main = "basic_operations.py",
+)
+
+# Time-series data operations example
+py_binary(
+    name = "timeseries_operations",
+    srcs = ["timeseries_operations.py"],
+    deps = [":cassandra_common"],
+    main = "timeseries_operations.py",
+)
+
+# Advanced querying examples
+py_binary(
+    name = "advanced_queries",
+    srcs = ["advanced_queries.py"],
+    deps = [":cassandra_common"],
+    main = "advanced_queries.py",
+)
+
+# Performance testing and benchmarks
+py_binary(
+    name = "performance_test",
+    srcs = ["performance_test.py"],
+    deps = [":cassandra_common"],
+    main = "performance_test.py",
+)
+
+# Aggregate target for all Python Cassandra examples
+filegroup(
+    name = "all_python_examples",
+    srcs = [
+        ":basic_operations",
+        ":timeseries_operations", 
+        ":advanced_queries",
+        ":performance_test",
+    ],
+)

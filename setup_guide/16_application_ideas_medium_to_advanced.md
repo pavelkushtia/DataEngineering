@@ -5,11 +5,12 @@ This document provides a comprehensive collection of medium to advanced level ap
 
 ## Prerequisites
 Before tackling these projects, ensure you have:
-- Completed the basic setup of all components (PostgreSQL, Kafka, Spark, Flink, Trino, Iceberg, Delta Lake, Elasticsearch)
+- Completed the basic setup of all components (PostgreSQL, Kafka, Spark, Flink, Trino, Iceberg, Delta Lake, Elasticsearch, Cassandra)
 - Basic understanding of data engineering concepts
-- Familiarity with SQL, Python, and Scala
+- Familiarity with SQL, CQL (Cassandra Query Language), Python, and Scala
 - Understanding of distributed systems concepts
 - Knowledge of JSON and REST APIs for Elasticsearch integration
+- Understanding of NoSQL data modeling principles for Cassandra
 
 ---
 
@@ -18,7 +19,7 @@ Before tackling these projects, ensure you have:
 ### Project 1: E-commerce Real-time Analytics Pipeline with Search
 **Difficulty: Medium**
 **Duration: 2-3 weeks**
-**Technologies: Kafka, Flink, PostgreSQL, Spark, Delta Lake, Elasticsearch, Kibana**
+**Technologies: Kafka, Flink, PostgreSQL, Cassandra, Spark, Delta Lake, Elasticsearch, Kibana**
 
 #### Description
 Build a comprehensive real-time analytics system for an e-commerce platform that processes user interactions, orders, and inventory updates in real-time, with advanced search and analytics capabilities.
@@ -29,6 +30,9 @@ Web App → Kafka → Flink → Delta Lake → Spark → Dashboards
            ↓        ↓         ↓               ↓
     PostgreSQL  Elasticsearch → Kibana    Product Search API
        (OLTP)    (Analytics)    (Dashboards)  (Real-time)
+           ↓           ↓
+      Cassandra → Real-time Session Store
+    (Time-series) (User sessions, cart data)
 ```
 
 #### Key Learning Objectives
@@ -66,7 +70,14 @@ events = {
 - Search analytics and query performance monitoring
 - Real-time search suggestions and trending products
 
-**Phase 4: Batch Processing**
+**Phase 4: Cassandra Time-Series & Session Management**
+- Real-time user session tracking in Cassandra
+- Time-series data for user behavior analytics
+- Shopping cart persistence and recovery
+- High-availability session store for web applications
+- Fast lookups for user preferences and browsing history
+
+**Phase 5: Batch Processing**
 - Daily/weekly aggregations
 - Customer segmentation
 - Product recommendation model training
@@ -82,6 +93,121 @@ events = {
 6. **Search relevance**: Optimize search ranking and personalization
 7. **Multi-language search**: Handle international product catalogs
 8. **Search performance**: Sub-100ms search response times
+9. **Cassandra data modeling**: Design efficient time-series and session tables
+10. **Session consistency**: Handle distributed session state across multiple nodes
+11. **Time-series performance**: Optimize for high-write, time-range query patterns
+
+#### Cassandra Integration Details
+
+**User Session Tracking Schema**
+```cql
+-- Keyspace for e-commerce sessions and time-series data
+CREATE KEYSPACE ecommerce_ts 
+WITH replication = {
+    'class': 'NetworkTopologyStrategy',
+    'datacenter1': 3
+};
+
+-- User sessions table for real-time session management
+CREATE TABLE ecommerce_ts.user_sessions (
+    user_id UUID,
+    session_id UUID,
+    session_start timestamp,
+    last_activity timestamp,
+    current_page text,
+    cart_items list<frozen<cart_item>>,
+    device_info frozen<device_metadata>,
+    location frozen<geo_location>,
+    PRIMARY KEY (user_id, session_start, session_id)
+) WITH CLUSTERING ORDER BY (session_start DESC)
+  AND gc_grace_seconds = 86400;
+
+-- User-defined types for complex data
+CREATE TYPE ecommerce_ts.cart_item (
+    product_id UUID,
+    product_name text,
+    quantity int,
+    price decimal,
+    added_at timestamp
+);
+
+CREATE TYPE ecommerce_ts.device_metadata (
+    device_type text,
+    browser text,
+    os text,
+    screen_resolution text,
+    ip_address inet
+);
+
+-- Time-series table for user behavior analytics
+CREATE TABLE ecommerce_ts.user_events (
+    user_id UUID,
+    event_date date,
+    event_time timestamp,
+    event_id UUID,
+    event_type text,
+    page_path text,
+    product_id UUID,
+    session_id UUID,
+    duration_ms int,
+    metadata map<text, text>,
+    PRIMARY KEY ((user_id, event_date), event_time, event_id)
+) WITH CLUSTERING ORDER BY (event_time DESC)
+  AND compaction = {
+    'class': 'TimeWindowCompactionStrategy',
+    'compaction_window_unit': 'DAYS',
+    'compaction_window_size': 7
+  };
+
+-- Real-time shopping cart persistence
+CREATE TABLE ecommerce_ts.shopping_carts (
+    user_id UUID,
+    cart_updated timestamp,
+    items list<frozen<cart_item>>,
+    total_amount decimal,
+    currency text,
+    expires_at timestamp,
+    PRIMARY KEY (user_id)
+) WITH default_time_to_live = 604800; -- 7 days TTL
+```
+
+**Cassandra Data Access Patterns**
+```python
+# High-performance session lookups
+def get_active_session(user_id):
+    query = """
+        SELECT session_id, last_activity, cart_items, current_page
+        FROM ecommerce_ts.user_sessions
+        WHERE user_id = ?
+        AND session_start >= ?
+        ORDER BY session_start DESC
+        LIMIT 1
+    """
+    return session.execute(query, [user_id, datetime.now() - timedelta(hours=24)])
+
+# Time-series analytics queries
+def get_user_behavior_timeline(user_id, start_date, end_date):
+    query = """
+        SELECT event_time, event_type, page_path, product_id, duration_ms
+        FROM ecommerce_ts.user_events
+        WHERE user_id = ?
+        AND event_date >= ?
+        AND event_date <= ?
+        AND event_time >= ?
+        AND event_time <= ?
+        ORDER BY event_time DESC
+    """
+    return session.execute(query, [user_id, start_date, end_date, start_date, end_date])
+
+# High-speed cart operations
+def update_shopping_cart(user_id, items, total_amount):
+    query = """
+        UPDATE ecommerce_ts.shopping_carts
+        SET items = ?, total_amount = ?, cart_updated = ?
+        WHERE user_id = ?
+    """
+    session.execute(query, [items, total_amount, datetime.now(), user_id])
+```
 
 #### Elasticsearch Integration Details
 
@@ -141,7 +267,7 @@ search_event = {
 ### Project 2: IoT Sensor Data Platform with Log Analytics
 **Difficulty: Medium-Advanced**
 **Duration: 3-4 weeks**
-**Technologies: Kafka, Flink, TimescaleDB (PostgreSQL), Spark, Iceberg, Elasticsearch, Kibana**
+**Technologies: Kafka, Flink, TimescaleDB (PostgreSQL), Cassandra, Spark, Iceberg, Elasticsearch, Kibana**
 
 #### Description
 Create a platform for ingesting, processing, and analyzing IoT sensor data from smart home devices, including anomaly detection, predictive maintenance, and comprehensive log analytics.
@@ -151,8 +277,10 @@ Create a platform for ingesting, processing, and analyzing IoT sensor data from 
 IoT Devices → MQTT → Kafka → Flink → TimescaleDB
                        ↓        ↓         ↓
                  Elasticsearch ← ← ← Iceberg Tables → Spark ML → Alerts
-                       ↓                                    ↓
-                   Kibana Dashboards ← ← ← ← ← ← ← ← ← ← ← ← ←
+                       ↓              ↓                      ↓
+                   Kibana      Cassandra ← ← ← ← ← ← ← ← ← ← ←
+                 Dashboards   (Device State &
+                             High-Speed Metrics)
 ```
 
 #### Data Sources Simulation
