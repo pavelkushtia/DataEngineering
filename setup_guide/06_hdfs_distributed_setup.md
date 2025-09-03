@@ -523,6 +523,32 @@ sudo systemctl restart flink-taskmanager   # On cpu-node2 and worker-node3 (Task
 
 **⚠️ IMPORTANT:** Trino catalog files need **complete configuration** (basic connector + HDFS settings). Simply appending HDFS settings to incomplete catalog files will cause Trino to fail.
 
+## 🚨 **CRITICAL: Hive Metastore Prerequisite**
+
+**Before creating Iceberg and Hive catalogs below**, you need **Hive Metastore service** running on port 9083.
+
+### **Two Options:**
+
+**Option A: Skip Lakehouse Catalogs (Recommended)**
+- Skip the Iceberg and Hive catalog sections below
+- Use Trino with PostgreSQL, Kafka, TPC-H catalogs only
+- Add lakehouse catalogs later when needed
+
+**Option B: Install Hive Metastore First**
+- Complete **[05_trino_cluster_setup.md](05_trino_cluster_setup.md) Step 16: Advanced Connectors Setup** (Hive Metastore installation)
+- Then return here to create the catalogs below
+- **Warning:** Creating these catalogs without Hive Metastore will cause Trino startup failures
+
+### **If You Accidentally Create These Catalogs:**
+```bash
+# Disable problematic catalogs to restore Trino functionality
+sudo mv /home/trino/trino/etc/catalog/iceberg.properties /home/trino/trino/etc/catalog/iceberg.properties.disabled 2>/dev/null
+sudo mv /home/trino/trino/etc/catalog/hive.properties /home/trino/trino/etc/catalog/hive.properties.disabled 2>/dev/null
+sudo systemctl restart trino
+```
+
+---
+
 Trino needs HDFS access for Iceberg, Delta Lake, and Hive catalogs:
 
 **Update Iceberg catalog for HDFS (if using Iceberg):**
