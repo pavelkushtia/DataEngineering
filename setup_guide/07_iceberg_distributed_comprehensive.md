@@ -200,6 +200,9 @@ $SPARK_HOME/bin/spark-shell \
 
 ```bash
 chmod +x /home/sanzad/iceberg-distributed/start-spark-iceberg-distributed.sh
+
+# Allow spark user to access the script directory
+chmod 755 /home/sanzad
 ```
 
 ### Step 3: Test Distributed Setup
@@ -211,9 +214,8 @@ chmod +x /home/sanzad/iceberg-distributed/start-spark-iceberg-distributed.sh
 #### **Test commands to run on cpu-node1 (192.168.1.184):**
 
 ```bash
-# Start distributed Spark session
-cd /home/sanzad/iceberg-distributed
-./start-spark-iceberg-distributed.sh
+# Start distributed Spark session (run as spark user)
+sudo su - spark -c "cd /home/sanzad/iceberg-distributed && ./start-spark-iceberg-distributed.sh"
 ```
 
 ```scala
