@@ -4,7 +4,10 @@
 This guide sets up Apache Iceberg with distributed HDFS storage and integrations with all engines in your cluster: Spark, Trino, Flink, Python analytics, and multi-engine coordination patterns.
 
 ## Prerequisites
-- HDFS cluster running (from [06_hdfs_distributed_setup.md](06_hdfs_distributed_setup.md))
+
+✅ **Must be completed first:**
+- [06_hdfs_distributed_setup.md](./06_hdfs_distributed_setup.md) - HDFS cluster running
+- [07_hive_metastore_setup.md](./07_hive_metastore_setup.md) - Hive Metastore service
 - All cluster components operational (Spark, Flink, Trino, Kafka, PostgreSQL)
 
 ## Phase 1: Core Distributed Setup

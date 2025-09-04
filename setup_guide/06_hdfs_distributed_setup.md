@@ -535,7 +535,7 @@ sudo systemctl restart flink-taskmanager   # On cpu-node2 and worker-node3 (Task
 - Add lakehouse catalogs later when needed
 
 **Option B: Install Hive Metastore First**
-- Complete **[05_trino_cluster_setup.md](05_trino_cluster_setup.md) Step 16: Advanced Connectors Setup** (Hive Metastore installation)
+- Complete **[07_hive_metastore_setup.md](./07_hive_metastore_setup.md)** (Hive Metastore installation)
 - Then return here to create the catalogs below
 - **Warning:** Creating these catalogs without Hive Metastore will cause Trino startup failures
 
@@ -625,9 +625,16 @@ sudo cat /home/trino/trino/etc/catalog/hive.properties
 ## Next Steps
 
 Now that HDFS is running, you can:
-1. Convert Iceberg setup to use HDFS storage
-2. Convert Delta Lake setup to use HDFS storage  
-3. Configure all engines (Spark, Flink, Trino) to use distributed lakehouse
-4. Set up monitoring and backup strategies
+
+**Continue with lakehouse infrastructure:**
+- **[07_hive_metastore_setup.md](./07_hive_metastore_setup.md)** - Apache Hive Metastore (required for Iceberg/Delta)
+
+**Set up table formats:**
+- **[08_iceberg_distributed_comprehensive.md](./08_iceberg_distributed_comprehensive.md)** - Apache Iceberg tables
+- **[09_deltalake_distributed_comprehensive.md](./09_deltalake_distributed_comprehensive.md)** - Delta Lake tables
+
+**Configure query engines:**
+- Configure all engines (Spark, Flink, Trino) to use distributed lakehouse
+- Set up monitoring and backup strategies
 
 Your lakehouse is now truly distributed across all 3 nodes! 🎉

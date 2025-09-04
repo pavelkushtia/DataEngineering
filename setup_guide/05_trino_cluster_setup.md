@@ -298,7 +298,7 @@ tpch.splits-per-node=4
 - Add lakehouse catalogs later when needed
 
 **Option B: Install Hive Metastore First**
-- Complete **Step 16: Advanced Connectors Setup** (Hive Metastore installation)
+- Complete **[07_hive_metastore_setup.md](./07_hive_metastore_setup.md)** (Hive Metastore installation)
 - Then return here to create the catalogs below
 - **Warning:** Creating these catalogs without Hive Metastore will cause Trino startup failures
 
@@ -597,44 +597,12 @@ LIMIT 10;
 
 ### Hive Metastore (for Iceberg/Delta Lake):
 
-**📍 Note:** After installing Hive Metastore below, you can return to **Step 7** to enable the Iceberg and Delta Lake catalogs that require this service.
+**📍 REQUIRED:** For Iceberg and Delta Lake catalogs, you **must** install Hive Metastore first.
 
-First, set up Hive Metastore:
-```bash
-# Download Hive
-wget https://downloads.apache.org/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
-tar -xzf apache-hive-3.1.3-bin.tar.gz
-mv apache-hive-3.1.3-bin hive
+**Complete the dedicated setup guide:**
+👉 **[07_hive_metastore_setup.md](./07_hive_metastore_setup.md)**
 
-# Configure Hive Metastore
-nano hive/conf/hive-site.xml
-```
-
-```xml
-<?xml version="1.0"?>
-<configuration>
-    <property>
-        <name>javax.jdo.option.ConnectionURL</name>
-        <value>jdbc:postgresql://192.168.1.184:5432/metastore</value>
-    </property>
-    <property>
-        <name>javax.jdo.option.ConnectionDriverName</name>
-        <value>org.postgresql.Driver</value>
-    </property>
-    <property>
-        <name>javax.jdo.option.ConnectionUserName</name>
-        <value>hive</value>
-    </property>
-    <property>
-        <name>javax.jdo.option.ConnectionPassword</name>
-        <value>password</value>
-    </property>
-    <property>
-        <name>hive.metastore.warehouse.dir</name>
-        <value>/home/trino/warehouse</value>
-    </property>
-</configuration>
-```
+After completing the Hive Metastore setup, return to **Step 7** above to enable the Iceberg and Delta Lake catalogs.
 
 ## Step 17: Sample Queries and Use Cases
 
