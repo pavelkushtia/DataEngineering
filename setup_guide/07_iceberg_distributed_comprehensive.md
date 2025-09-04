@@ -189,7 +189,7 @@ $SPARK_HOME/bin/spark-shell \
     --conf spark.sql.catalog.iceberg_hive.warehouse=hdfs://192.168.1.184:9000/lakehouse/iceberg \
     --conf spark.sql.defaultCatalog=iceberg_hive \
     --conf spark.hadoop.fs.defaultFS=hdfs://192.168.1.184:9000 \
-    --conf spark.eventLog.dir=hdfs://192.168.1.184:9000/spark-logs \
+    --conf spark.eventLog.dir=hdfs://192.168.1.184:9000/lakehouse/spark/event-logs \
     --conf spark.sql.adaptive.enabled=true \
     --conf spark.sql.shuffle.partitions=12 \
     --executor-memory 2g \
