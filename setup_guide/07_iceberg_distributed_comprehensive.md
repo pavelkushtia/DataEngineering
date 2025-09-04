@@ -55,7 +55,7 @@ mkdir -p libs conf scripts notebooks logs
 cd /home/sanzad/iceberg-distributed/libs
 
 # Core Iceberg JARs
-wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.9.2/iceberg-spark-runtime-3.5_2.12-1.9.2.jar
+wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.3/iceberg-spark-runtime-3.5_2.12-1.4.3.jar
 wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-flink-runtime-1.19/1.9.2/iceberg-flink-runtime-1.19-1.9.2.jar
 
 # Hadoop integration
@@ -168,7 +168,7 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 
 # Build classpath with all required JARs
-ICEBERG_JARS="${ICEBERG_HOME}/libs/iceberg-spark-runtime-3.5_2.12-1.9.2.jar"
+ICEBERG_JARS="${ICEBERG_HOME}/libs/iceberg-spark-runtime-3.5_2.12-1.4.3.jar"
 HADOOP_JARS="${ICEBERG_HOME}/libs/hadoop-client-3.3.6.jar"
 POSTGRES_JAR="${ICEBERG_HOME}/libs/postgresql-42.7.2.jar"
 AWS_JARS="${ICEBERG_HOME}/libs/aws-java-sdk-bundle-1.12.367.jar"
@@ -1028,7 +1028,7 @@ cd /home/sanzad/iceberg-local
 mkdir -p libs
 
 # Download Iceberg runtime for Spark
-wget -P libs https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.9.2/iceberg-spark-runtime-3.5_2.12-1.9.2.jar
+wget -P libs https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.3/iceberg-spark-runtime-3.5_2.12-1.4.3.jar
 
 # Download AWS SDK (if planning to use S3)
 wget -P libs https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.367/aws-java-sdk-bundle-1.12.367.jar
@@ -1092,13 +1092,13 @@ SPARK_HOME="/home/spark/spark"  # Adjust to your Spark installation
 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 
 # Add Iceberg JARs to Spark classpath
-ICEBERG_JARS="${ICEBERG_HOME}/libs/iceberg-spark-runtime-3.5_2.12-1.9.2.jar"
+ICEBERG_JARS="${ICEBERG_HOME}/libs/iceberg-spark-runtime-3.5_2.12-1.4.3.jar"
 POSTGRES_JAR="${ICEBERG_HOME}/libs/postgresql-42.7.2.jar"
 AWS_JARS="${ICEBERG_HOME}/libs/aws-java-sdk-bundle-1.12.367.jar,${ICEBERG_HOME}/libs/hadoop-aws-3.3.4.jar"
 
 # Start Spark with Iceberg
 $SPARK_HOME/bin/spark-shell \
-    --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.2 \
+    --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.3 \
     --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
     --conf spark.sql.catalog.iceberg=org.apache.iceberg.spark.SparkCatalog \
     --conf spark.sql.catalog.iceberg.type=hadoop \
