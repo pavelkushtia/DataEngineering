@@ -1135,8 +1135,8 @@ GRANT ALL PRIVILEGES ON DATABASE iceberg_catalog TO iceberg_user;
 
 ### Start Spark with Iceberg:
 ```bash
-cd /home/sanzad/iceberg-local
-./start-spark-iceberg.sh
+# Run as spark user to access Spark binaries
+sudo su - spark -c "cd /home/sanzad/iceberg-local && ./start-spark-iceberg.sh"
 ```
 
 ### Create your first Iceberg table:

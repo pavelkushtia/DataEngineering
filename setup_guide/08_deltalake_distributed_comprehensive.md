@@ -182,9 +182,8 @@ chmod +x /home/sanzad/deltalake-distributed/start-pyspark-delta-distributed.sh
 ### Step 3: Test Distributed Setup
 
 ```bash
-# Start distributed Spark session
-cd /home/sanzad/deltalake-distributed
-./start-spark-delta-distributed.sh
+# Start distributed Spark session (run as spark user)
+sudo su - spark -c "cd /home/sanzad/deltalake-distributed && ./start-spark-delta-distributed.sh"
 ```
 
 ```scala
