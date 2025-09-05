@@ -1,7 +1,8 @@
 # Delta Lake Distributed & Comprehensive Setup Guide
 
 ## Overview
-This guide sets up Delta Lake with distributed HDFS storage and integrations with all engines in your cluster: Spark, Trino, Flink, Python analytics, and multi-engine coordination patterns.
+
+This guide sets up Delta Lake with distributed HDFS storage, Hive Metastore integration, and multi-engine coordination across Spark, Trino, Flink, and Python analytics in your 3-node cluster.
 
 ## Prerequisites
 
@@ -9,6 +10,134 @@ This guide sets up Delta Lake with distributed HDFS storage and integrations wit
 - [06_hdfs_distributed_setup.md](./06_hdfs_distributed_setup.md) - HDFS cluster running
 - [07_hive_metastore_setup.md](./07_hive_metastore_setup.md) - Hive Metastore service  
 - All cluster components operational (Spark, Flink, Trino, Kafka, PostgreSQL)
+
+## Hive Metastore Integration Architecture
+
+**Why Hive Metastore is Critical for Delta Lake:**
+- **Cross-engine table discovery**: Spark creates tables → Trino sees them instantly
+- **Schema evolution tracking**: Version management across all engines  
+- **ACID metadata operations**: Concurrent access without corruption
+- **Unified catalog**: Single source of truth for all table metadata
+
+### Delta Lake Distributed Architecture
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '14px'}, 'flowchart': {'htmlLabels': true}}}%%
+graph TB
+    subgraph "Delta Lake Distributed Architecture"
+        subgraph "Compute Engines"
+            SP[Spark<br/>3.5.6]
+            TR[Trino<br/>Query Engine]  
+            FL[Flink<br/>1.19.3]
+            PY[Python<br/>Analytics]
+        end
+        
+        subgraph "Metadata Layer"
+            HMS[Hive Metastore<br/>:9083]
+            PGSQL[(PostgreSQL<br/>Metadata DB)]
+        end
+        
+        subgraph "Storage Layer"
+            HDFS[HDFS Cluster<br/>3-Node]
+            DT[Delta Lake<br/>Tables]
+        end
+        
+        subgraph "Streaming"
+            KF[Kafka<br/>Events]
+        end
+        
+        SP --> HMS
+        TR --> HMS
+        FL --> HMS
+        PY --> HMS
+        HMS --> PGSQL
+        HMS --> DT
+        DT --> HDFS
+        KF --> FL
+        KF --> SP
+    end
+
+    classDef compute fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef metadata fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef storage fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef streaming fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    
+    class SP,TR,FL,PY compute
+    class HMS,PGSQL metadata
+    class HDFS,DT storage
+    class KF streaming
+```
+
+### Node Architecture
+
+The following diagram shows how Delta Lake components are distributed across your 3-node cluster:
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '12px'}, 'flowchart': {'htmlLabels': true}}}%%
+graph LR
+    subgraph "cpu-node1 (192.168.1.184)"
+        S1[Spark Master]
+        T1[Trino Coordinator]
+        F1[Flink JobManager]
+        H1[Hive Metastore]
+        HD1[HDFS NameNode]
+    end
+    
+    subgraph "cpu-node2 (192.168.1.185)"
+        S2[Spark Worker]
+        F2[Flink TaskManager]
+        HD2[HDFS DataNode]
+    end
+    
+    subgraph "worker-node3 (192.168.1.186)"
+        S3[Spark Worker]
+        F3[Flink TaskManager]
+        HD3[HDFS DataNode]
+    end
+
+    classDef master fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    classDef worker fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
+    classDef storage fill:#bbdefb,stroke:#1976d2,stroke-width:2px
+    
+    class S1,T1,F1,H1 master
+    class S2,S3,F2,F3 worker
+    class HD1,HD2,HD3 storage
+```
+
+### Multi-Engine Data Flow Coordination
+
+This sequence diagram illustrates how multiple engines coordinate through Hive Metastore for Delta Lake operations:
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '13px'}}}%%
+sequenceDiagram
+    participant K as Kafka Events
+    participant S as Spark
+    participant H as Hive Metastore
+    participant D as Delta Lake (HDFS)
+    participant T as Trino
+    participant F as Flink
+    
+    Note over K,F: Multi-Engine Delta Lake Coordination
+    
+    K->>+F: Stream events
+    F->>+H: Register streaming table
+    H->>+D: Create Delta table metadata
+    F->>+D: Write streaming data
+    
+    S->>+H: Query table catalog
+    H-->>-S: Return table metadata
+    S->>+D: Read Delta table
+    S->>+H: Update table stats
+    
+    T->>+H: Discover tables
+    H-->>-T: Table metadata
+    T->>+D: Query Delta table
+    
+    Note over S,T: Concurrent ACID operations
+    S->>+D: Batch write (ACID)
+    T->>+D: Real-time query (ACID)
+```
 
 ## Phase 1: Core Distributed Setup
 
@@ -236,38 +365,106 @@ val deltaTable = DeltaTable.forPath(spark, distributedPath)
 deltaTable.detail().show(false)
 ```
 
-## Phase 2: Trino Integration
+## Phase 2: Trino Integration with Hive Metastore
 
-### Step 4: Configure Trino for Delta Lake
+### Step 4: Configure Trino for Delta Lake with Hive Metastore
 
-Update Trino's Delta Lake catalog configuration:
-```bash
-# Update existing delta.properties
-sudo nano /home/trino/trino/etc/catalog/delta.properties
+**🚨 CRITICAL:** Trino's Delta Lake connector **requires** Hive Metastore for table discovery and metadata management.
+
+### Trino-Delta Lake-Metastore Integration Flow
+
+This diagram shows how Trino processes Delta Lake queries through Hive Metastore:
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '12px'}, 'flowchart': {'htmlLabels': true}}}%%
+graph LR
+    subgraph "Trino Delta Lake Integration"
+        T[Trino Query<br/>Engine]
+        DC[Delta Lake<br/>Connector]
+        HMS[Hive Metastore<br/>:9083]
+        
+        subgraph "Metadata Operations"
+            TL[Table Location<br/>Discovery]
+            SC[Schema<br/>Evolution]
+            PT[Partition<br/>Pruning]
+        end
+        
+        subgraph "HDFS Delta Tables"
+            DT[Delta Lake<br/>Tables]
+            PQ[Parquet<br/>Files]
+            DL[Delta<br/>Transaction Log]
+        end
+        
+        subgraph "Query Processing"
+            PP[Predicate Pushdown<br/>Partition Pruning]
+            VC[Vectorized Reading<br/>Column Pruning]
+        end
+        
+        T --> DC
+        DC --> HMS
+        HMS --> TL
+        HMS --> SC
+        HMS --> PT
+        TL --> DT
+        SC --> DL
+        PT --> PQ
+        PP --> VC
+        VC --> PQ
+    end
+
+    classDef query fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px
+    classDef meta fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px
+    classDef data fill:#e0f2f1,stroke:#4caf50,stroke-width:2px
+    classDef process fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+    
+    class T,DC query
+    class HMS,TL,SC,PT meta
+    class DT,PQ,DL data
+    class PP,VC process
 ```
 
-```properties
+#### Create Enhanced Trino Delta Catalog:
+```bash
+# Create comprehensive delta.properties with Hive Metastore integration
+sudo tee /home/trino/trino/etc/catalog/delta.properties > /dev/null << 'EOF'
 connector.name=delta-lake
-hive.metastore.uri=thrift://192.168.1.184:9083
 
-# HDFS configuration
+# ===== HIVE METASTORE INTEGRATION (CRITICAL) =====
+hive.metastore.uri=thrift://192.168.1.184:9083
+hive.metastore.username=hive
+
+# HDFS configuration for distributed storage
 hive.hdfs.authentication.type=NONE
 hive.hdfs.impersonation.enabled=false
 
-# Delta Lake optimizations
+# Delta Lake warehouse location (must match Spark config)
+delta.default.warehouse.path=hdfs://192.168.1.184:9000/lakehouse/delta-lake
+
+# ===== PERFORMANCE OPTIMIZATIONS =====
 delta.enable-non-concurrent-writes=true
 delta.max-partitions-per-query=1000
 delta.table-statistics-enabled=true
 delta.collect-extended-statistics-on-write=true
+delta.vacuum.min-retention=168h
+delta.checkpoint.interval=10
 
-# Performance settings
+# Query optimization features
+delta.checkpoint-filtering.enabled=true
+delta.dynamic-filtering.enabled=true
+delta.projection-pushdown.enabled=true
+
+# Performance settings for distributed workloads
 delta.compression-codec=ZSTD
 delta.max-outstanding-splits=1000
 delta.domain-compaction-threshold=1000
 
-# Enable advanced features
-delta.checkpoint-filtering.enabled=true
-delta.dynamic-filtering.enabled=true
+# Multi-engine coordination settings
+delta.register-table-procedure.enabled=true
+delta.auto-register-table.enabled=false
+EOF
+
+# Restart Trino to apply new configuration
+sudo systemctl restart trino
 ```
 
 ### Test Trino integration:
@@ -312,6 +509,55 @@ ORDER BY region, year, month;
 ```
 
 ## Phase 3: Flink Streaming Integration
+
+### Flink-Kafka-Delta Lake Streaming Pipeline
+
+This diagram shows how Flink processes streaming data from Kafka into Delta Lake tables:
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '12px'}, 'flowchart': {'htmlLabels': true}}}%%
+flowchart LR
+    subgraph "Streaming Pipeline Architecture"
+        subgraph "Data Sources"
+            K1[Kafka Topic<br/>sales-events]
+            K2[Kafka Topic<br/>user-events]
+        end
+        
+        subgraph "Flink Processing"
+            FJ[Flink JobManager<br/>:8081]
+            FT1[Flink TaskManager<br/>cpu-node2]
+            FT2[Flink TaskManager<br/>worker-node3]
+            
+            ST[Stream Processing<br/>Transformations]
+            WM[Watermarks &<br/>Event Time]
+        end
+        
+        subgraph "Metadata & Storage"
+            HMS[Hive Metastore<br/>Table Registration]
+            DT[Delta Tables<br/>HDFS]
+            CP[Checkpoints<br/>Fault Tolerance]
+        end
+        
+        K1 --> FJ
+        K2 --> FJ
+        FJ --> FT1
+        FJ --> FT2
+        FT1 --> ST
+        FT2 --> ST
+        ST --> WM
+        WM --> HMS
+        HMS --> DT
+        ST --> CP
+    end
+
+    classDef source fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef processing fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef storage fill:#f1f8e9,stroke:#388e3c,stroke-width:2px
+    
+    class K1,K2 source
+    class FJ,FT1,FT2,ST,WM processing
+    class HMS,DT,CP storage
+```
 
 ### Step 5: Configure Flink for Delta Lake Streaming
 
@@ -417,6 +663,58 @@ if __name__ == "__main__":
 ```
 
 ## Phase 4: Python Analytics Integration
+
+### Python Delta Lake Analytics Architecture
+
+This diagram shows how Python integrates with Delta Lake through multiple pathways:
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '12px'}, 'flowchart': {'htmlLabels': true}}}%%
+graph TB
+    subgraph "Python Analytics Ecosystem"
+        subgraph "Python Libraries"
+            DR[delta-rs<br/>Native Delta]
+            PD[Pandas<br/>DataFrames]
+            PA[PyArrow<br/>Columnar]
+            PL[Polars<br/>Fast Processing]
+            DDB[DuckDB<br/>In-Memory SQL]
+        end
+        
+        subgraph "Data Access Paths"
+            D1[Direct File<br/>Access Path]
+            D2[Spark<br/>Integration Path]
+            D3[Hive Metastore<br/>Catalog Path]
+        end
+        
+        subgraph "Delta Lake Storage"
+            HMS[Hive Metastore<br/>Table Registry]
+            DT[Delta Tables<br/>HDFS]
+            TL[Transaction Logs<br/>_delta_log/]
+            PF[Parquet Files<br/>Data Storage]
+        end
+        
+        DR --> D1
+        PD --> D2
+        PA --> D1
+        PL --> D1
+        DDB --> D3
+        
+        D1 --> DT
+        D2 --> HMS
+        D3 --> HMS
+        HMS --> DT
+        DT --> TL
+        DT --> PF
+    end
+
+    classDef python fill:#f8f9fa,stroke:#6c757d,stroke-width:2px
+    classDef path fill:#fff3cd,stroke:#856404,stroke-width:2px
+    classDef storage fill:#d1ecf1,stroke:#0c5460,stroke-width:2px
+    
+    class DR,PD,PA,PL,DDB python
+    class D1,D2,D3 path
+    class HMS,DT,TL,PF storage
+```
 
 ### Step 6: Enhanced Python Setup with delta-rs
 
@@ -791,6 +1089,45 @@ if __name__ == "__main__":
 ```
 
 ## Phase 5: Multi-Engine Coordination
+
+### Multi-Engine ACID Coordination Architecture
+
+This diagram illustrates concurrent ACID operations across multiple engines on shared Delta Lake tables:
+
+```mermaid
+%%{init: {'theme': 'neutral', 'themeVariables': {'fontSize': '13px'}}}%%
+sequenceDiagram
+    participant S as Spark<br/>Batch Writer
+    participant T as Trino<br/>Query Reader
+    participant P as Python<br/>Analytics
+    participant H as Hive Metastore<br/>Coordinator
+    participant D as Delta Lake<br/>ACID Storage
+    
+    Note over S,D: Concurrent Multi-Engine Operations
+    
+    par Spark Batch Processing
+        S->>+H: Begin transaction
+        H->>+D: Lock table version
+        S->>+D: Write batch data (ACID)
+        D->>+H: Update table metadata
+        H-->>-S: Commit acknowledged
+    and Trino Real-time Queries
+        T->>+H: Request table metadata
+        H-->>-T: Return consistent view
+        T->>+D: Query current data (MVCC)
+        D-->>-T: Return query results
+    and Python Analytics
+        P->>+H: Discover tables
+        H-->>-P: Return table catalog
+        P->>+D: Read with time travel
+        D-->>-P: Historical data view
+    end
+    
+    Note over S,D: All engines see consistent ACID state
+    
+    H->>D: Cleanup old versions
+    D-->>H: Vacuum completed
+```
 
 ### Step 7: Multi-Engine Coordination for Delta Lake
 
