@@ -32,6 +32,7 @@ worker-node3 (192.168.1.186): Client access only
 # Create hive user
 sudo useradd -m -s /bin/bash hive
 sudo passwd hive  # Set password
+sudo usermod -aG sudo hive
 
 # Create installation directory
 sudo mkdir -p /opt/hive
@@ -48,7 +49,7 @@ sudo su - hive
 
 # Download Hive 3.1.3 (compatible with Hadoop 3.3.6)
 cd /opt/hive
-wget https://downloads.apache.org/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
+wget https://archive.apache.org/dist/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
 tar -xzf apache-hive-3.1.3-bin.tar.gz
 mv apache-hive-3.1.3-bin current
 rm apache-hive-3.1.3-bin.tar.gz
@@ -399,7 +400,7 @@ sudo mkdir -p /opt/hive/client
 cd /opt/hive/client
 
 # Download and extract (client-only, no service)
-sudo wget https://downloads.apache.org/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
+sudo wget https://archive.apache.org/dist/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
 sudo tar -xzf apache-hive-3.1.3-bin.tar.gz
 sudo mv apache-hive-3.1.3-bin current
 sudo rm apache-hive-3.1.3-bin.tar.gz
