@@ -1,52 +1,61 @@
 # Distributed Lakehouse Architecture Guide
 
-## 🎯 The Problem You Identified
+## 🏛️ Architecture Overview
 
-You were absolutely right to question why Iceberg and Delta Lake were set up locally when you have a 3-node distributed cluster! **The original setups were fundamentally flawed** - they treated table formats as single-node systems when they're designed to be distributed.
+This guide explains your **distributed lakehouse architecture** running across 3 nodes with complete fault tolerance, parallel processing, and multi-engine support.
 
-## 🏗️ What We Fixed: Local vs Distributed Architecture
+## 🏗️ Distributed Lakehouse Architecture
 
-### **Before (Local-Only - WRONG!):**
+```mermaid
+graph TB
+    subgraph "Distributed Lakehouse Architecture"
+        subgraph "cpu-node1<br/>192.168.1.184"
+            N1_HDFS["HDFS<br/>NameNode + DataNode"]
+            N1_ICE["Iceberg Tables<br/>hdfs://shared"]
+            N1_DELTA["Delta Lake Tables<br/>hdfs://shared"]
+        end
+        
+        subgraph "cpu-node2<br/>192.168.1.185"
+            N2_HDFS["HDFS<br/>DataNode"]
+            N2_ICE["Full Access<br/>to all data"]
+            N2_DELTA["Full Access<br/>to all data"]
+        end
+        
+        subgraph "worker-node3<br/>192.168.1.186"
+            N3_HDFS["HDFS<br/>DataNode"]
+            N3_ICE["Full Access<br/>to all data"]
+            N3_DELTA["Full Access<br/>to all data"]
+        end
+    end
+    
+    %% HDFS connections
+    N1_HDFS -.->|"Data Replication"| N2_HDFS
+    N1_HDFS -.->|"Data Replication"| N3_HDFS
+    N2_HDFS -.->|"Metadata Sync"| N1_HDFS
+    N3_HDFS -.->|"Metadata Sync"| N1_HDFS
+    
+    %% Table format access
+    N1_ICE -.->|"Distributed Access"| N2_ICE
+    N1_ICE -.->|"Distributed Access"| N3_ICE
+    N1_DELTA -.->|"Distributed Access"| N2_DELTA
+    N1_DELTA -.->|"Distributed Access"| N3_DELTA
+    
+    %% Styling
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000
+    classDef hdfsNode fill:#2E86AB,stroke:#23527c,stroke-width:2px,color:#fff
+    classDef icebergNode fill:#4A90E2,stroke:#2171b5,stroke-width:2px,color:#fff
+    classDef deltaNode fill:#28A745,stroke:#1e7e34,stroke-width:2px,color:#fff
+    
+    class N1_HDFS,N2_HDFS,N3_HDFS hdfsNode
+    class N1_ICE,N2_ICE,N3_ICE icebergNode
+    class N1_DELTA,N2_DELTA,N3_DELTA deltaNode
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   cpu-node1     │    │   cpu-node2     │    │  worker-node3   │
-│                 │    │                 │    │                 │
-│ ❌ Iceberg:     │    │ ❌ NO ACCESS    │    │ ❌ NO ACCESS    │
-│  file:///local  │    │   to data       │    │   to data       │
-│                 │    │                 │    │                 │
-│ ❌ Delta Lake:  │    │ ❌ NO ACCESS    │    │ ❌ NO ACCESS    │
-│  file:///local  │    │   to data       │    │   to data       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
 
-**Problems:**
-- ❌ **Single Point of Failure**: If cpu-node1 dies, all lakehouse data is lost
-- ❌ **No Parallel I/O**: Only one node can read/write data
-- ❌ **Wasted Resources**: 66% of your cluster storage unused
-- ❌ **Poor Performance**: No distributed processing benefits
-
-### **After (Distributed - CORRECT!):**
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   cpu-node1     │    │   cpu-node2     │    │  worker-node3   │
-│                 │    │                 │    │                 │
-│ ✅ HDFS         │◄──►│ ✅ HDFS         │◄──►│ ✅ HDFS         │
-│  NameNode       │    │  DataNode       │    │  DataNode       │
-│  DataNode       │    │                 │    │                 │
-│                 │    │                 │    │                 │
-│ ✅ Iceberg:     │    │ ✅ FULL ACCESS  │    │ ✅ FULL ACCESS  │
-│  hdfs://shared  │    │   to all data   │    │   to all data   │
-│                 │    │                 │    │                 │
-│ ✅ Delta Lake:  │    │ ✅ FULL ACCESS  │    │ ✅ FULL ACCESS  │
-│  hdfs://shared  │    │   to all data   │    │   to all data   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-**Benefits:**
+### **Architecture Benefits:**
 - ✅ **Fault Tolerance**: Data replicated across nodes, survives failures
-- ✅ **Parallel I/O**: All nodes can read/write simultaneously
+- ✅ **Parallel I/O**: All nodes can read/write simultaneously  
 - ✅ **Full Resource Utilization**: All 3 nodes store and process data
-- ✅ **True Distributed Processing**: Engines process data where it lives
+- ✅ **Distributed Processing**: Engines process data where it lives
 
 ## 🗄️ Hive Metastore: The Metadata Heart of Your Lakehouse
 
@@ -60,71 +69,62 @@ Think of Hive Metastore as the **"librarian"** of your lakehouse:
 
 ### **Architecture: How It All Connects**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    LAKEHOUSE METADATA ARCHITECTURE              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │   TRINO     │  │   SPARK     │  │   FLINK     │            │
-│  │ Coordinator │  │  Driver     │  │ JobManager  │            │
-│  │             │  │             │  │             │            │
-│  │ "I need     │  │ "I need     │  │ "I need     │            │
-│  │  table      │  │  schema     │  │  partition  │            │
-│  │  location"  │  │  info"      │  │  info"      │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-│         │                 │                 │                 │
-│         │                 │                 │                 │
-│         └─────────────────┼─────────────────┘                 │
-│                           │                                   │
-│                           ▼                                   │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │            HIVE METASTORE SERVICE                      │  │
-│  │           (Thrift Server on Port 9083)                 │  │
-│  │                                                         │  │
-│  │  ┌─────────────────────────────────────────────────┐   │  │
-│  │  │         METADATA OPERATIONS                     │   │  │
-│  │  │                                                 │   │  │
-│  │  │  ▸ Table Schema Management                      │   │  │
-│  │  │  ▸ Partition Information                        │   │  │
-│  │  │  ▸ File Location Mapping                        │   │  │
-│  │  │  ▸ Storage Format Details                       │   │  │
-│  │  │  ▸ Table Statistics                             │   │  │
-│  │  │  ▸ Access Control (if enabled)                  │   │  │
-│  │  └─────────────────────────────────────────────────┘   │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                           │                                   │
-│                           ▼                                   │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │              POSTGRESQL DATABASE                        │  │
-│  │              (Metadata Storage)                         │  │
-│  │                                                         │  │
-│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐   │  │
-│  │  │   DBS       │ │   TBLS      │ │   PARTITIONS    │   │  │
-│  │  │ (Databases) │ │  (Tables)   │ │  (Partitions)   │   │  │
-│  │  └─────────────┘ └─────────────┘ └─────────────────┘   │  │
-│  │                                                         │  │
-│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐   │  │
-│  │  │ COLUMNS_V2  │ │   SDS       │ │   SERDES        │   │  │
-│  │  │ (Schemas)   │ │(Storage     │ │ (Serialization) │   │  │
-│  │  │             │ │ Descriptors)│ │                 │   │  │
-│  │  └─────────────┘ └─────────────┘ └─────────────────┘   │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                           │                                   │
-│                           ▼                                   │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │                HDFS DISTRIBUTED STORAGE                 │  │
-│  │                                                         │  │
-│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐   │  │
-│  │  │/lakehouse/  │ │/lakehouse/  │ │/lakehouse/      │   │  │
-│  │  │  iceberg/   │ │   delta/    │ │   hive/         │   │  │
-│  │  │             │ │             │ │                 │   │  │
-│  │  │ ▸ metadata/ │ │ ▸ _delta_   │ │ ▸ warehouse/    │   │  │
-│  │  │ ▸ data/     │ │   log/      │ │   tables/       │   │  │
-│  │  │ ▸ snapshots │ │ ▸ data/     │ │                 │   │  │
-│  │  └─────────────┘ └─────────────┘ └─────────────────┘   │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph "Query Engines"
+        TRINO["TRINO<br/>Coordinator<br/>'I need table<br/>location'"]
+        SPARK["SPARK<br/>Driver<br/>'I need schema<br/>info'"]
+        FLINK["FLINK<br/>JobManager<br/>'I need partition<br/>info'"]
+    end
+    
+    subgraph HMS["HIVE METASTORE SERVICE<br/>(Thrift Server on Port 9083)"]
+        METADATA["METADATA OPERATIONS<br/>• Table Schema Management<br/>• Partition Information<br/>• File Location Mapping<br/>• Storage Format Details<br/>• Table Statistics<br/>• Access Control"]
+    end
+    
+    subgraph PG["POSTGRESQL DATABASE<br/>(Metadata Storage)"]
+        DBS["DBS<br/>(Databases)"]
+        TBLS["TBLS<br/>(Tables)"]
+        PARTITIONS["PARTITIONS<br/>(Partitions)"]
+        COLUMNS["COLUMNS_V2<br/>(Schemas)"]
+        SDS["SDS<br/>(Storage Descriptors)"]
+        SERDES["SERDES<br/>(Serialization)"]
+    end
+    
+    subgraph HDFS["HDFS DISTRIBUTED STORAGE"]
+        ICE_DIR["/lakehouse/iceberg/<br/>• metadata/<br/>• data/<br/>• snapshots"]
+        DELTA_DIR["/lakehouse/delta/<br/>• _delta_log/<br/>• data/"]
+        HIVE_DIR["/lakehouse/hive/<br/>• warehouse/<br/>• tables/"]
+    end
+    
+    %% Connections
+    TRINO --> HMS
+    SPARK --> HMS
+    FLINK --> HMS
+    
+    HMS --> METADATA
+    METADATA --> DBS
+    METADATA --> TBLS
+    METADATA --> PARTITIONS
+    METADATA --> COLUMNS
+    METADATA --> SDS
+    METADATA --> SERDES
+    
+    HMS --> HDFS
+    HDFS --> ICE_DIR
+    HDFS --> DELTA_DIR
+    HDFS --> HIVE_DIR
+    
+    %% Styling  
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000
+    classDef engineNode fill:#E8F4FD,stroke:#2171b5,stroke-width:2px,color:#000
+    classDef metastoreNode fill:#FFF2CC,stroke:#d6b656,stroke-width:2px,color:#000
+    classDef dbNode fill:#F8CECC,stroke:#b85450,stroke-width:2px,color:#000
+    classDef hdfsNode fill:#D5E8D4,stroke:#82b366,stroke-width:2px,color:#000
+    
+    class TRINO,SPARK,FLINK engineNode
+    class HMS,METADATA metastoreNode
+    class DBS,TBLS,PARTITIONS,COLUMNS,SDS,SERDES dbNode
+    class ICE_DIR,DELTA_DIR,HIVE_DIR hdfsNode
 ```
 
 ### **How PostgreSQL Stores Lakehouse Metadata**
@@ -187,85 +187,42 @@ CD_ID | COLUMN_NAME    | TYPE_NAME | INTEGER_IDX
 
 #### **When you run:** `SELECT * FROM iceberg.sales.customer_data`
 
-**Step 1: Metadata Lookup**
-```
-┌─────────────────────────────────────────────────────────┐
-│  Trino Coordinator                                      │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ "I need info about iceberg.sales.customer_data" │   │
-│  │                                                 │   │
-│  │ ▸ What columns does it have?                    │   │
-│  │ ▸ Where is the data stored?                     │   │
-│  │ ▸ What's the current schema version?            │   │
-│  │ ▸ How is data partitioned?                      │   │
-│  └─────────────────────────────────────────────────┘   │
-│                          │                              │
-│                          ▼                              │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ Thrift Call to Hive Metastore                   │   │
-│  │ thrift://192.168.1.184:9083                     │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│  Hive Metastore Service                                 │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ Receives request for table metadata              │   │
-│  │                                                 │   │
-│  │ ▸ Queries PostgreSQL for table info             │   │
-│  │ ▸ Joins DBS, TBLS, SDS, COLUMNS_V2 tables      │   │
-│  │ ▸ Retrieves schema, location, format info       │   │
-│  │ ▸ Returns complete metadata to Trino            │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│  PostgreSQL Metadata Query                              │
-│                                                         │
-│  SELECT t.TBL_NAME, s.LOCATION, c.COLUMN_NAME,         │
-│         c.TYPE_NAME                                     │
-│  FROM TBLS t                                            │
-│  JOIN SDS s ON t.SD_ID = s.SD_ID                       │
-│  JOIN COLUMNS_V2 c ON s.CD_ID = c.CD_ID               │
-│  WHERE t.TBL_NAME = 'customer_data'                    │
-│                                                         │
-│  Returns: Schema + HDFS location                        │
-│  hdfs://192.168.1.184:9000/lakehouse/iceberg/...       │
-└─────────────────────────────────────────────────────────┘
-```
+**The Query Flow: From SQL to Data**
 
-**Step 2: Data Access Planning**
-```
-┌─────────────────────────────────────────────────────────┐
-│  Trino Coordinator (with metadata)                     │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ Now I know:                                     │   │
-│  │ ▸ Table schema: customer_id, name, email, etc. │   │
-│  │ ▸ Data location: hdfs://...iceberg/customer/    │   │
-│  │ ▸ Format: Iceberg with Parquet files            │   │
-│  │ ▸ Current snapshot ID: 123456789               │   │
-│  │                                                 │   │
-│  │ ▸ Create execution plan                         │   │
-│  │ ▸ Split data across workers                     │   │
-│  │ ▸ Generate file read tasks                      │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│  Distributed Data Access                               │
-│                                                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐   │
-│  │Worker 1     │ │Worker 2     │ │Worker 3         │   │
-│  │cpu-node1    │ │cpu-node2    │ │worker-node3     │   │
-│  │             │ │             │ │                 │   │
-│  │ Reads files │ │ Reads files │ │ Reads files     │   │
-│  │ 1-1000      │ │ 1001-2000   │ │ 2001-3000       │   │
-│  │ from HDFS   │ │ from HDFS   │ │ from HDFS       │   │
-│  └─────────────┘ └─────────────┘ └─────────────────┘   │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant T as Trino Coordinator
+    participant H as Hive Metastore<br/>(Port 9083)
+    participant P as PostgreSQL<br/>(metastore DB)
+    participant HD as HDFS Storage
+
+    Note over T: Query: SELECT * FROM iceberg.sales.customer_data
+    
+    T->>H: get_table(iceberg.sales.customer_data)
+    Note over T,H: Thrift call to thrift://192.168.1.184:9083
+    
+    H->>P: SELECT t.TBL_NAME, s.LOCATION, c.COLUMN_NAME<br/>FROM TBLS t JOIN SDS s JOIN COLUMNS_V2 c<br/>WHERE t.TBL_NAME = 'customer_data'
+    
+    P-->>H: Returns: Schema + HDFS location
+    Note over P,H: customer_id:bigint, name:string<br/>hdfs://192.168.1.184:9000/lakehouse/iceberg
+    
+    H-->>T: Table metadata response
+    Note over H,T: Schema, location, format, partitions
+    
+    Note over T: Creates execution plan<br/>Splits data across workers
+    
+    par Worker 1 (cpu-node1)
+        T->>HD: Read files 1-1000
+        HD-->>T: Data partition 1
+    and Worker 2 (cpu-node2)
+        T->>HD: Read files 1001-2000  
+        HD-->>T: Data partition 2
+    and Worker 3 (worker-node3)
+        T->>HD: Read files 2001-3000
+        HD-->>T: Data partition 3
+    end
+    
+    Note over T: Combines results<br/>Returns to client
 ```
 
 ### **Why This Architecture is Powerful**
@@ -325,54 +282,41 @@ CREATE TABLE iceberg.sales.orders (
 
 ### **Thrift Server Architecture**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     THRIFT COMMUNICATION LAYER                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
-│  │   TRINO     │    │   SPARK     │    │   FLINK     │         │
-│  │ cpu-node1   │    │ cpu-node2   │    │worker-node3 │         │
-│  │             │    │             │    │             │         │
-│  │ Thrift      │    │ Thrift      │    │ Thrift      │         │
-│  │ Client      │    │ Client      │    │ Client      │         │
-│  └─────────────┘    └─────────────┘    └─────────────┘         │
-│         │                   │                   │              │
-│         │                   │                   │              │
-│         │    ┌──────────────┼──────────────┐    │              │
-│         │    │              │              │    │              │
-│         ▼    ▼              ▼              ▼    ▼              │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │          HIVE METASTORE THRIFT SERVER                  │   │
-│  │                                                         │   │
-│  │  ┌─────────────────────────────────────────────────┐   │   │
-│  │  │      Thrift Service (Port 9083)                 │   │   │
-│  │  │                                                 │   │   │
-│  │  │  ▸ Accepts Thrift RPC calls                     │   │   │
-│  │  │  ▸ Validates client requests                    │   │   │
-│  │  │  ▸ Handles concurrent connections               │   │   │
-│  │  │  ▸ Thread pool management                       │   │   │
-│  │  │  ▸ Connection pooling                           │   │   │
-│  │  └─────────────────────────────────────────────────┘   │   │
-│  │                            │                            │   │
-│  │                            ▼                            │   │
-│  │  ┌─────────────────────────────────────────────────┐   │   │
-│  │  │       Metastore Core Service                    │   │   │
-│  │  │                                                 │   │   │
-│  │  │  ▸ Table operations (CREATE, ALTER, DROP)       │   │   │
-│  │  │  ▸ Database operations                          │   │   │
-│  │  │  ▸ Partition management                         │   │   │
-│  │  │  ▸ Schema evolution handling                    │   │   │
-│  │  │  ▸ Statistics collection                        │   │   │
-│  │  └─────────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                            │                                   │
-│                            ▼                                   │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                POSTGRESQL                               │   │
-│  │           (Metadata Persistence)                        │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph "Thrift Clients (Query Engines)"
+        TRINO_C["TRINO<br/>cpu-node1<br/>Thrift Client"]
+        SPARK_C["SPARK<br/>cpu-node2<br/>Thrift Client"]
+        FLINK_C["FLINK<br/>worker-node3<br/>Thrift Client"]
+    end
+    
+    subgraph HMS_SERVER["HIVE METASTORE THRIFT SERVER<br/>Port 9083"]
+        THRIFT_SERVICE["Thrift Service Layer<br/>• Accepts Thrift RPC calls<br/>• Validates client requests<br/>• Handles concurrent connections<br/>• Thread pool management<br/>• Connection pooling"]
+        
+        CORE_SERVICE["Metastore Core Service<br/>• Table operations (CREATE, ALTER, DROP)<br/>• Database operations<br/>• Partition management<br/>• Schema evolution handling<br/>• Statistics collection"]
+    end
+    
+    subgraph PG_DB["POSTGRESQL DATABASE<br/>(Metadata Persistence)"]
+        POSTGRES["PostgreSQL Server<br/>192.168.1.184:5432<br/>Database: metastore"]
+    end
+    
+    %% Connections
+    TRINO_C -->|"Thrift RPC<br/>get_table()<br/>create_table()"| THRIFT_SERVICE
+    SPARK_C -->|"Thrift RPC<br/>alter_table()<br/>get_partitions()"| THRIFT_SERVICE
+    FLINK_C -->|"Thrift RPC<br/>get_databases()<br/>get_statistics()"| THRIFT_SERVICE
+    
+    THRIFT_SERVICE --> CORE_SERVICE
+    CORE_SERVICE -->|"JDBC<br/>SQL Queries"| POSTGRES
+    
+    %% Styling
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000
+    classDef clientNode fill:#E8F4FD,stroke:#2171b5,stroke-width:2px,color:#000
+    classDef serverNode fill:#FFF2CC,stroke:#d6b656,stroke-width:3px,color:#000
+    classDef dbNode fill:#F8CECC,stroke:#b85450,stroke-width:2px,color:#000
+    
+    class TRINO_C,SPARK_C,FLINK_C clientNode
+    class THRIFT_SERVICE,CORE_SERVICE serverNode
+    class POSTGRES dbNode
 ```
 
 ### **Thrift RPC Examples**
@@ -583,48 +527,29 @@ table.catalog.hive_catalog.hive-conf-dir: /path/to/hive/conf
 
 #### **When you run:** `sudo systemctl start hive-metastore`
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  HIVE METASTORE STARTUP SEQUENCE                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Step 1: Configuration Loading                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ▸ Read /opt/hive/current/conf/hive-site.xml            │   │
-│  │ ▸ Parse database connection settings                    │   │
-│  │ ▸ Parse Thrift server settings                         │   │
-│  │ ▸ Load HDFS configuration                              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                            │                                   │
-│                            ▼                                   │
-│  Step 2: Database Connection                                    │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ▸ Connect to PostgreSQL (192.168.1.184:5432)          │   │
-│  │ ▸ Verify metastore database exists                     │   │
-│  │ ▸ Initialize connection pool                           │   │
-│  │ ▸ Load JDO/DataNucleus persistence layer              │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                            │                                   │
-│                            ▼                                   │
-│  Step 3: Thrift Server Start                                   │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ▸ Create Thrift server socket (port 9083)              │   │
-│  │ ▸ Initialize thread pool for concurrent requests       │   │
-│  │ ▸ Register metastore service handlers                  │   │
-│  │ ▸ Start listening for client connections               │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                            │                                   │
-│                            ▼                                   │
-│  Step 4: HDFS Integration                                       │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ▸ Connect to HDFS NameNode (192.168.1.184:9000)       │   │
-│  │ ▸ Verify warehouse directory exists (/lakehouse)       │   │
-│  │ ▸ Test read/write permissions                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                            │                                   │
-│                            ▼                                   │
-│  ✅ Service Ready: Accepting Thrift connections on 9083        │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    START([sudo systemctl start<br/>hive-metastore]) --> CONFIG
+    
+    CONFIG["🔧 Step 1: Configuration Loading<br/>• Read /opt/hive/current/conf/hive-site.xml<br/>• Parse database connection settings<br/>• Parse Thrift server settings<br/>• Load HDFS configuration"]
+    
+    CONFIG --> DB_CONN["🗄️ Step 2: Database Connection<br/>• Connect to PostgreSQL (192.168.1.184:5432)<br/>• Verify metastore database exists<br/>• Initialize connection pool<br/>• Load JDO/DataNucleus persistence layer"]
+    
+    DB_CONN --> THRIFT["🌐 Step 3: Thrift Server Start<br/>• Create Thrift server socket (port 9083)<br/>• Initialize thread pool for concurrent requests<br/>• Register metastore service handlers<br/>• Start listening for client connections"]
+    
+    THRIFT --> HDFS["💾 Step 4: HDFS Integration<br/>• Connect to HDFS NameNode (192.168.1.184:9000)<br/>• Verify warehouse directory exists (/lakehouse)<br/>• Test read/write permissions"]
+    
+    HDFS --> READY["✅ Service Ready<br/>Accepting Thrift connections on 9083"]
+    
+    %% Styling
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#000
+    classDef startNode fill:#E8F4FD,stroke:#2171b5,stroke-width:3px,color:#000
+    classDef processNode fill:#FFF2CC,stroke:#d6b656,stroke-width:2px,color:#000
+    classDef readyNode fill:#D5E8D4,stroke:#82b366,stroke-width:3px,color:#000
+    
+    class START startNode
+    class CONFIG,DB_CONN,THRIFT,HDFS processNode
+    class READY readyNode
 ```
 
 ### **Advanced Configuration Options**
