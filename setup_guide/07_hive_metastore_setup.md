@@ -309,10 +309,12 @@ telnet 192.168.1.184 9083
 # Should connect successfully, type 'quit' to exit
 ```
 
-### Test with beeline (Hive CLI):
+### Test with beeline (Hive CLI) - **OPTIONAL**:
+
+**⚠️ Note:** This test requires HiveServer2 (port 10000) which is **not included in this metastore-only setup**. If you get "Connection refused" errors, that's expected. See the **Optional HiveServer2 Setup** section below if you want direct Hive SQL access.
 
 ```bash
-# Connect to Hive via beeline
+# Connect to Hive via beeline (requires HiveServer2 service)
 sudo su - hive -c "$HIVE_HOME/bin/beeline -u 'jdbc:hive2://192.168.1.184:10000' -n hive"
 
 # Inside beeline, test basic operations:
@@ -324,6 +326,71 @@ sudo su - hive -c "$HIVE_HOME/bin/beeline -u 'jdbc:hive2://192.168.1.184:10000' 
 # > DROP TABLE test_table;
 # > DROP DATABASE test_db;
 # > !quit
+```
+
+## Step 9.5: Optional HiveServer2 Setup
+
+**⚠️ This is OPTIONAL:** HiveServer2 provides direct Hive SQL access via beeline/JDBC. It's not required for Trino/Spark/Flink integration, which only need the Hive Metastore (port 9083).
+
+### When you might need HiveServer2:
+- Direct Hive SQL queries via beeline
+- Legacy applications using Hive JDBC drivers
+- Testing Hive queries without Trino/Spark
+
+### Install HiveServer2 service:
+
+```bash
+# Create HiveServer2 systemd service
+sudo tee /etc/systemd/system/hiveserver2.service > /dev/null << 'EOF'
+[Unit]
+Description=Apache HiveServer2
+Documentation=https://hive.apache.org/
+After=hive-metastore.service
+Requires=hive-metastore.service
+
+[Service]
+Type=simple
+User=hive
+Group=hive
+ExecStart=/opt/hive/current/bin/hive --service hiveserver2
+WorkingDirectory=/opt/hive/current
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+Environment=HIVE_HOME=/opt/hive/current
+Environment=HADOOP_HOME=/opt/hadoop/current
+Environment=HADOOP_CONF_DIR=/opt/hadoop/current/etc/hadoop
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60s
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start HiveServer2
+sudo systemctl daemon-reload
+sudo systemctl enable hiveserver2
+sudo systemctl start hiveserver2
+
+# Check status
+sudo systemctl status hiveserver2
+
+# Verify port 10000 is listening
+sudo netstat -tlnp | grep 10000
+```
+
+### Configure firewall (if HiveServer2 is enabled):
+
+```bash
+# Allow HiveServer2 access from local network
+sudo ufw allow from 192.168.1.0/24 to any port 10000 comment 'HiveServer2'
+```
+
+### Test HiveServer2 connection:
+
+```bash
+# Test with beeline (should work now if HiveServer2 is running)
+sudo su - hive -c "$HIVE_HOME/bin/beeline -u 'jdbc:hive2://192.168.1.184:10000' -n hive"
 ```
 
 ## Step 10: Integration Testing
@@ -450,7 +517,17 @@ sudo su - postgres -c "psql -c 'SELECT datname, datdba, datacl FROM pg_database 
 sudo su - hive -c "$HIVE_HOME/bin/schematool -dbType postgres -initSchema"
 ```
 
-**4. Service timeout during startup:**
+**4. Beeline connection refused (EXPECTED):**
+```bash
+# If beeline fails with "Connection refused" on port 10000:
+# Error: Could not open client transport with JDBC Uri: jdbc:hive2://192.168.1.184:10000
+
+# This is EXPECTED in metastore-only setup. Solutions:
+# Option 1: Skip beeline test (recommended for lakehouse)
+# Option 2: Install HiveServer2 (see Step 9.5 - Optional HiveServer2 Setup)
+```
+
+**5. Service timeout during startup:**
 ```bash
 # If service fails with "start operation timed out. Terminating."
 # Check logs for this pattern:
@@ -556,6 +633,12 @@ sudo su - hive -c "$HIVE_HOME/bin/hive --service metatool -listFSRoot"
 
 ✅ **Hive Metastore is now running and ready!**
 
+**What you have installed:**
+- ✅ **Hive Metastore** (Port 9083) - Required for Trino/Spark/Flink lakehouse integration
+- ⚠️ **HiveServer2** (Port 10000) - Optional, only if you completed Step 9.5
+
+**Note:** For lakehouse analytics with Trino, Spark, and Flink, you only need the Metastore service.
+
 **Continue with lakehouse table formats:**
 - [08_iceberg_distributed_comprehensive.md](./08_iceberg_distributed_comprehensive.md) - Apache Iceberg tables
 - [09_deltalake_distributed_comprehensive.md](./09_deltalake_distributed_comprehensive.md) - Delta Lake tables
@@ -567,11 +650,15 @@ sudo su - hive -c "$HIVE_HOME/bin/hive --service metatool -listFSRoot"
 
 **Service Status Check:**
 ```bash
-# Verify all components are running:
+# Verify core components are running:
 sudo systemctl status hive-metastore    # ✅ Should be active
 sudo systemctl status postgresql        # ✅ Should be active  
 sudo systemctl status hadoop-namenode   # ✅ Should be active
 sudo netstat -tlnp | grep 9083         # ✅ Should show hive metastore listening
+
+# Optional: If you installed HiveServer2 (Step 9.5):
+sudo systemctl status hiveserver2       # ✅ Should be active (if installed)
+sudo netstat -tlnp | grep 10000        # ✅ Should show hiveserver2 listening (if installed)
 ```
 
 🎉 **Your Hive Metastore is ready for lakehouse analytics!**
