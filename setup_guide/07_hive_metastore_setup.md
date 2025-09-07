@@ -236,6 +236,8 @@ sudo su - hadoop -c "export HADOOP_HOME=/opt/hadoop/current && export PATH=\$HAD
 
 ### Create systemd service file:
 
+**Note:** We use `Type=simple` because Hive Metastore runs in foreground. Using `Type=forking` would cause startup timeouts.
+
 ```bash
 sudo tee /etc/systemd/system/hive-metastore.service > /dev/null << 'EOF'
 [Unit]
@@ -245,17 +247,15 @@ Requires=network.target remote-fs.target
 After=network.target remote-fs.target
 
 [Service]
-Type=forking
+Type=simple
 User=hive
 Group=hive
 ExecStart=/opt/hive/current/bin/hive --service metastore
-ExecStop=/bin/kill -TERM $MAINPID
 WorkingDirectory=/opt/hive/current
 Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 Environment=HIVE_HOME=/opt/hive/current
 Environment=HADOOP_HOME=/opt/hadoop/current
 Environment=HADOOP_CONF_DIR=/opt/hadoop/current/etc/hadoop
-PIDFile=/var/run/hive-metastore.pid
 Restart=on-failure
 RestartSec=5
 StartLimitInterval=60s
@@ -450,7 +450,22 @@ sudo su - postgres -c "psql -c 'SELECT datname, datdba, datacl FROM pg_database 
 sudo su - hive -c "$HIVE_HOME/bin/schematool -dbType postgres -initSchema"
 ```
 
-**4. HDFS connection issues:**
+**4. Service timeout during startup:**
+```bash
+# If service fails with "start operation timed out. Terminating."
+# Check logs for this pattern:
+sudo journalctl -u hive-metastore.service --no-pager -n 20
+
+# Fix: The service type is wrong, update it:
+sudo systemctl stop hive-metastore
+sudo sed -i 's/Type=forking/Type=simple/' /etc/systemd/system/hive-metastore.service
+sudo sed -i '/PIDFile=/d' /etc/systemd/system/hive-metastore.service
+sudo sed -i '/ExecStop=/d' /etc/systemd/system/hive-metastore.service
+sudo systemctl daemon-reload
+sudo systemctl start hive-metastore
+```
+
+**5. HDFS connection issues:**
 ```bash
 # Test HDFS connectivity as hive user
 sudo su - hive -c "export HADOOP_HOME=/opt/hadoop/current && export HADOOP_CONF_DIR=\$HADOOP_HOME/etc/hadoop && \$HADOOP_HOME/bin/hdfs dfs -ls /"

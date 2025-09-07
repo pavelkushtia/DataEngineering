@@ -86,7 +86,7 @@ class KafkaStreamConsumer:
             "messages_processed": 0,
             "batches_processed": 0,
             "errors": 0,
-            "processing_time": 0.0
+            "processing_time": 0.0,
         }
 
     def create_consumer(self, topics: List[str]) -> KafkaConsumer:
@@ -100,8 +100,8 @@ class KafkaStreamConsumer:
                 enable_auto_commit=self.config.KAFKA_ENABLE_AUTO_COMMIT,
                 max_poll_records=self.config.KAFKA_MAX_POLL_RECORDS,
                 consumer_timeout_ms=self.config.CONSUMER_TIMEOUT_MS,
-                value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-                key_deserializer=lambda x: x.decode('utf-8') if x else None
+                value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+                key_deserializer=lambda x: x.decode("utf-8") if x else None,
             )
 
             print(f"🔌 Connected to Kafka: {', '.join(self.config.KAFKA_BROKERS)}")
@@ -135,35 +135,42 @@ class KafkaStreamConsumer:
         try:
             for message in self.consumer:
                 self.stats["messages_consumed"] += 1
-                
+
                 # Add message to current batch
-                current_batch.append({
-                    'topic': message.topic,
-                    'partition': message.partition,
-                    'offset': message.offset,
-                    'key': message.key,
-                    'value': message.value,
-                    'timestamp': message.timestamp,
-                    'timestamp_type': message.timestamp_type
-                })
+                current_batch.append(
+                    {
+                        "topic": message.topic,
+                        "partition": message.partition,
+                        "offset": message.offset,
+                        "key": message.key,
+                        "value": message.value,
+                        "timestamp": message.timestamp,
+                        "timestamp_type": message.timestamp_type,
+                    }
+                )
 
                 # Process batch when it reaches target size or timeout
                 should_process_batch = (
-                    len(current_batch) >= self.config.BATCH_SIZE or
-                    (time.time() - batch_start_time) * 1000 >= self.config.BATCH_TIMEOUT_MS
+                    len(current_batch) >= self.config.BATCH_SIZE
+                    or (time.time() - batch_start_time) * 1000
+                    >= self.config.BATCH_TIMEOUT_MS
                 )
 
                 if should_process_batch and current_batch:
-                    success = self._process_batch_with_retry(current_batch, batch_processor)
-                    
+                    success = self._process_batch_with_retry(
+                        current_batch, batch_processor
+                    )
+
                     if success:
                         # Commit offsets after successful processing
                         self.consumer.commit()
                         self.stats["batches_processed"] += 1
                         messages_processed += len(current_batch)
-                        
-                        print(f"✅ Processed batch: {len(current_batch)} messages (Total: {messages_processed})")
-                    
+
+                        print(
+                            f"✅ Processed batch: {len(current_batch)} messages (Total: {messages_processed})"
+                        )
+
                     # Reset batch
                     current_batch = []
                     batch_start_time = time.time()
@@ -194,34 +201,39 @@ class KafkaStreamConsumer:
             try:
                 start_time = time.time()
                 processor(batch)
-                
+
                 processing_time = time.time() - start_time
                 self.stats["processing_time"] += processing_time
                 self.stats["messages_processed"] += len(batch)
-                
+
                 return True
 
             except Exception as e:
                 self.stats["errors"] += 1
-                print(f"⚠️ Batch processing failed (attempt {attempt + 1}/{self.config.RETRY_ATTEMPTS}): {e}")
-                
+                print(
+                    f"⚠️ Batch processing failed (attempt {attempt + 1}/{self.config.RETRY_ATTEMPTS}): {e}"
+                )
+
                 if attempt < self.config.RETRY_ATTEMPTS - 1:
                     time.sleep(self.config.RETRY_BACKOFF_MS / 1000.0)
                 else:
-                    print(f"❌ Failed to process batch after {self.config.RETRY_ATTEMPTS} attempts")
+                    print(
+                        f"❌ Failed to process batch after {self.config.RETRY_ATTEMPTS} attempts"
+                    )
 
         return False
 
     def get_stats(self) -> Dict[str, Any]:
         """Get consumer statistics."""
-        avg_processing_time = (
-            self.stats["processing_time"] / max(self.stats["batches_processed"], 1)
+        avg_processing_time = self.stats["processing_time"] / max(
+            self.stats["batches_processed"], 1
         )
-        
+
         return {
             **self.stats,
             "avg_batch_processing_time": f"{avg_processing_time:.3f}s",
-            "throughput_msg_per_sec": self.stats["messages_processed"] / max(self.stats["processing_time"], 1)
+            "throughput_msg_per_sec": self.stats["messages_processed"]
+            / max(self.stats["processing_time"], 1),
         }
 
     def close(self):
@@ -239,12 +251,7 @@ class CassandraStreamSink:
         self.cluster = None
         self.session = None
         self.prepared_statements = {}
-        self.stats = {
-            "inserts": 0,
-            "batches": 0,
-            "errors": 0,
-            "insert_time": 0.0
-        }
+        self.stats = {"inserts": 0, "batches": 0, "errors": 0, "insert_time": 0.0}
 
     def create_session(self) -> Session:
         """Create Cassandra session for streaming data."""
@@ -254,7 +261,7 @@ class CassandraStreamSink:
             if self.config.CASSANDRA_USERNAME and self.config.CASSANDRA_PASSWORD:
                 auth_provider = PlainTextAuthProvider(
                     username=self.config.CASSANDRA_USERNAME,
-                    password=self.config.CASSANDRA_PASSWORD
+                    password=self.config.CASSANDRA_PASSWORD,
                 )
 
             # Create cluster
@@ -262,11 +269,11 @@ class CassandraStreamSink:
                 contact_points=self.config.CASSANDRA_HOSTS,
                 port=self.config.CASSANDRA_PORT,
                 auth_provider=auth_provider,
-                load_balancing_policy=DCAwareRoundRobinPolicy(local_dc='datacenter1')
+                load_balancing_policy=DCAwareRoundRobinPolicy(local_dc="datacenter1"),
             )
 
             self.session = self.cluster.connect()
-            
+
             # Set keyspace
             try:
                 self.session.set_keyspace(self.config.CASSANDRA_KEYSPACE)
@@ -275,7 +282,9 @@ class CassandraStreamSink:
                 print(f"⚠️ Keyspace '{self.config.CASSANDRA_KEYSPACE}' not found")
                 raise
 
-            print(f"🔌 Connected to Cassandra: {', '.join(self.config.CASSANDRA_HOSTS)}")
+            print(
+                f"🔌 Connected to Cassandra: {', '.join(self.config.CASSANDRA_HOSTS)}"
+            )
 
             return self.session
 
@@ -292,14 +301,14 @@ class CassandraStreamSink:
     def prepare_statement(self, query: str, cache_key: str = None) -> PreparedStatement:
         """Prepare CQL statement for efficient batch inserts."""
         cache_key = cache_key or query
-        
+
         if cache_key in self.prepared_statements:
             return self.prepared_statements[cache_key]
 
         session = self.get_session()
         prepared = session.prepare(query)
         self.prepared_statements[cache_key] = prepared
-        
+
         print(f"⚡ Prepared statement: {cache_key[:50]}...")
         return prepared
 
@@ -311,18 +320,20 @@ class CassandraStreamSink:
         try:
             # Use unlogged batch for performance (eventual consistency)
             batch = BatchStatement(batch_type=BatchType.UNLOGGED)
-            
+
             for statement, params in statements_and_params:
                 batch.add(statement, params)
 
             session.execute(batch)
-            
+
             insert_time = time.time() - start_time
             self.stats["batches"] += 1
             self.stats["inserts"] += len(statements_and_params)
             self.stats["insert_time"] += insert_time
 
-            print(f"💾 Inserted batch: {len(statements_and_params)} records in {insert_time:.3f}s")
+            print(
+                f"💾 Inserted batch: {len(statements_and_params)} records in {insert_time:.3f}s"
+            )
 
         except WriteTimeout as e:
             self.stats["errors"] += 1
@@ -337,11 +348,11 @@ class CassandraStreamSink:
         """Get sink statistics."""
         avg_insert_time = self.stats["insert_time"] / max(self.stats["batches"], 1)
         throughput = self.stats["inserts"] / max(self.stats["insert_time"], 1)
-        
+
         return {
             **self.stats,
             "avg_batch_insert_time": f"{avg_insert_time:.3f}s",
-            "throughput_inserts_per_sec": f"{throughput:.1f}"
+            "throughput_inserts_per_sec": f"{throughput:.1f}",
         }
 
     def close(self):
@@ -422,39 +433,53 @@ class EventStreamProcessor:
     def process_events_batch(self, messages: List[Dict]):
         """Process a batch of Kafka messages and insert into Cassandra."""
         # Prepare statements
-        insert_event = self.sink.prepare_statement("""
+        insert_event = self.sink.prepare_statement(
+            """
             INSERT INTO stream_events (
                 event_id, event_type, user_id, timestamp, data, 
                 source_topic, source_partition, source_offset
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, "insert_event")
+        """,
+            "insert_event",
+        )
 
-        insert_activity = self.sink.prepare_statement("""
+        insert_activity = self.sink.prepare_statement(
+            """
             INSERT INTO user_activity (
                 user_id, activity_date, activity_time, activity_id, 
                 activity_type, properties, session_id
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, "insert_activity")
+        """,
+            "insert_activity",
+        )
 
         batch_statements = []
 
         for message in messages:
             try:
                 # Extract message data
-                event_data = message['value']
-                timestamp = datetime.fromtimestamp(message['timestamp'] / 1000.0)
-                
+                event_data = message["value"]
+                timestamp = datetime.fromtimestamp(message["timestamp"] / 1000.0)
+
                 # Apply transformation if registered
-                event_type = event_data.get('event_type', 'unknown')
+                event_type = event_data.get("event_type", "unknown")
                 if event_type in self.event_transformers:
                     event_data = self.event_transformers[event_type](event_data)
 
                 # Prepare event record
                 event_id = uuid.uuid1()
-                user_id = uuid.UUID(event_data.get('user_id')) if event_data.get('user_id') else None
-                
+                user_id = (
+                    uuid.UUID(event_data.get("user_id"))
+                    if event_data.get("user_id")
+                    else None
+                )
+
                 # Convert all data values to strings for map storage
-                data_map = {k: str(v) for k, v in event_data.items() if k not in ['event_type', 'user_id']}
+                data_map = {
+                    k: str(v)
+                    for k, v in event_data.items()
+                    if k not in ["event_type", "user_id"]
+                }
 
                 event_params = [
                     event_id,
@@ -462,9 +487,9 @@ class EventStreamProcessor:
                     user_id,
                     timestamp,
                     data_map,
-                    message['topic'],
-                    message['partition'],
-                    message['offset']
+                    message["topic"],
+                    message["partition"],
+                    message["offset"],
                 ]
 
                 batch_statements.append((insert_event, event_params))
@@ -478,7 +503,11 @@ class EventStreamProcessor:
                         event_id,
                         event_type,
                         data_map,
-                        uuid.UUID(event_data.get('session_id')) if event_data.get('session_id') else None
+                        (
+                            uuid.UUID(event_data.get("session_id"))
+                            if event_data.get("session_id")
+                            else None
+                        ),
                     ]
                     batch_statements.append((insert_activity, activity_params))
 
@@ -494,23 +523,19 @@ class EventStreamProcessor:
         """Start the complete streaming pipeline."""
         print(f"🚀 Starting Kafka → Cassandra stream processing")
         print(f"📡 Topics: {topics}")
-        
+
         # Setup
         self.create_tables_if_not_exists()
         self.consumer.create_consumer(topics)
-        
+
         # Start processing
         self.consumer.consume_messages(
-            batch_processor=self.process_events_batch,
-            max_messages=max_messages
+            batch_processor=self.process_events_batch, max_messages=max_messages
         )
 
     def get_complete_stats(self) -> Dict[str, Any]:
         """Get comprehensive statistics from the entire pipeline."""
-        return {
-            "consumer": self.consumer.get_stats(),
-            "sink": self.sink.get_stats()
-        }
+        return {"consumer": self.consumer.get_stats(), "sink": self.sink.get_stats()}
 
     def close(self):
         """Close all connections."""
@@ -521,72 +546,67 @@ class EventStreamProcessor:
 def create_sample_event_data(count: int = 100) -> List[Dict]:
     """Create sample event data for testing."""
     events = []
-    event_types = ['page_view', 'click', 'purchase', 'login', 'logout']
-    
+    event_types = ["page_view", "click", "purchase", "login", "logout"]
+
     for i in range(count):
         event = {
-            'event_type': event_types[i % len(event_types)],
-            'user_id': str(uuid.uuid4()),
-            'session_id': str(uuid.uuid4()),
-            'timestamp': int(time.time() * 1000),
-            'page_url': f'/page/{i % 10}',
-            'user_agent': 'Mozilla/5.0',
-            'ip_address': f'192.168.1.{i % 255}',
-            'duration': str(30 + (i % 120))
+            "event_type": event_types[i % len(event_types)],
+            "user_id": str(uuid.uuid4()),
+            "session_id": str(uuid.uuid4()),
+            "timestamp": int(time.time() * 1000),
+            "page_url": f"/page/{i % 10}",
+            "user_agent": "Mozilla/5.0",
+            "ip_address": f"192.168.1.{i % 255}",
+            "duration": str(30 + (i % 120)),
         }
         events.append(event)
-    
+
     return events
 
 
 def parse_common_args() -> argparse.ArgumentParser:
     """Create argument parser with common Kafka-Cassandra options."""
-    parser = argparse.ArgumentParser(description="Kafka-Cassandra Stream Processing Application")
+    parser = argparse.ArgumentParser(
+        description="Kafka-Cassandra Stream Processing Application"
+    )
 
     # Kafka options
     parser.add_argument(
-        "--kafka-brokers", 
-        nargs='+',
-        default=KafkaCassandraConfig.KAFKA_BROKERS, 
-        help="Kafka broker addresses"
+        "--kafka-brokers",
+        nargs="+",
+        default=KafkaCassandraConfig.KAFKA_BROKERS,
+        help="Kafka broker addresses",
     )
     parser.add_argument(
-        "--kafka-topics", 
-        nargs='+',
-        required=True, 
-        help="Kafka topics to consume"
+        "--kafka-topics", nargs="+", required=True, help="Kafka topics to consume"
     )
     parser.add_argument(
-        "--consumer-group", 
-        default=KafkaCassandraConfig.KAFKA_CONSUMER_GROUP, 
-        help="Kafka consumer group"
+        "--consumer-group",
+        default=KafkaCassandraConfig.KAFKA_CONSUMER_GROUP,
+        help="Kafka consumer group",
     )
 
     # Cassandra options
     parser.add_argument(
-        "--cassandra-hosts", 
-        nargs='+',
-        default=KafkaCassandraConfig.CASSANDRA_HOSTS, 
-        help="Cassandra host addresses"
+        "--cassandra-hosts",
+        nargs="+",
+        default=KafkaCassandraConfig.CASSANDRA_HOSTS,
+        help="Cassandra host addresses",
     )
     parser.add_argument(
-        "--keyspace", 
-        default=KafkaCassandraConfig.CASSANDRA_KEYSPACE, 
-        help="Cassandra keyspace"
+        "--keyspace",
+        default=KafkaCassandraConfig.CASSANDRA_KEYSPACE,
+        help="Cassandra keyspace",
     )
 
     # Processing options
     parser.add_argument(
-        "--batch-size", 
+        "--batch-size",
         type=int,
-        default=KafkaCassandraConfig.BATCH_SIZE, 
-        help="Batch size for processing"
+        default=KafkaCassandraConfig.BATCH_SIZE,
+        help="Batch size for processing",
     )
-    parser.add_argument(
-        "--max-messages", 
-        type=int,
-        help="Maximum messages to process"
-    )
+    parser.add_argument("--max-messages", type=int, help="Maximum messages to process")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
     return parser
@@ -615,6 +635,7 @@ def handle_errors(func):
             print(f"❌ Unexpected error: {e}")
             if hasattr(e, "__traceback__"):
                 import traceback
+
                 traceback.print_exc()
             sys.exit(1)
 
@@ -638,8 +659,7 @@ if __name__ == "__main__":
 
         # Test prepared statement
         test_stmt = sink.prepare_statement(
-            "SELECT cluster_name FROM system.local",
-            "test_query"
+            "SELECT cluster_name FROM system.local", "test_query"
         )
         print("✅ Prepared statement test successful")
 

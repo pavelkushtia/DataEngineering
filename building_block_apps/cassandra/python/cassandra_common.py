@@ -29,7 +29,12 @@ try:
     from cassandra.cluster import Cluster, Session
     from cassandra.auth import PlainTextAuthProvider
     from cassandra.policies import DCAwareRoundRobinPolicy, WhiteListRoundRobinPolicy
-    from cassandra.query import SimpleStatement, PreparedStatement, BatchStatement, BatchType
+    from cassandra.query import (
+        SimpleStatement,
+        PreparedStatement,
+        BatchStatement,
+        BatchType,
+    )
     from cassandra.metadata import Metadata
     from cassandra import InvalidRequest, Unauthorized, OperationTimedOut
 except ImportError:
@@ -45,24 +50,24 @@ class CassandraConfig:
     HOSTS = ["192.168.1.184", "192.168.1.187", "192.168.1.190"]
     PORT = 9042
     KEYSPACE = "homelab_analytics"
-    
+
     # Authentication (set if authentication is enabled)
     USERNAME = None
     PASSWORD = None
-    
+
     # Connection pool settings
     MAX_CONNECTIONS_PER_HOST = 8
     MAX_REQUESTS_PER_CONNECTION = 128
-    
+
     # Query timeout settings
     REQUEST_TIMEOUT = 30.0
     CONNECT_TIMEOUT = 5.0
-    
+
     # Consistency settings
     DEFAULT_CONSISTENCY_LEVEL = "LOCAL_QUORUM"
     READ_CONSISTENCY_LEVEL = "LOCAL_ONE"
     WRITE_CONSISTENCY_LEVEL = "LOCAL_QUORUM"
-    
+
     # Performance settings
     MAX_SCHEMA_AGREEMENT_WAIT = 10
     CONTROL_CONNECTION_TIMEOUT = 2.0
@@ -77,12 +82,12 @@ class CassandraConnection:
         self.session = None
         self.prepared_statements = {}
         self.stats = {
-            "queries": 0, 
+            "queries": 0,
             "prepared_queries": 0,
             "batch_queries": 0,
-            "errors": 0, 
+            "errors": 0,
             "connections": 0,
-            "query_time": 0.0
+            "query_time": 0.0,
         }
 
     def create_cluster_connection(self) -> Cluster:
@@ -92,14 +97,13 @@ class CassandraConnection:
             auth_provider = None
             if self.config.USERNAME and self.config.PASSWORD:
                 auth_provider = PlainTextAuthProvider(
-                    username=self.config.USERNAME,
-                    password=self.config.PASSWORD
+                    username=self.config.USERNAME, password=self.config.PASSWORD
                 )
 
             # Configure load balancing policy
             load_balancing_policy = DCAwareRoundRobinPolicy(
-                local_dc='datacenter1',  # Default datacenter name
-                used_hosts_per_remote_dc=1
+                local_dc="datacenter1",  # Default datacenter name
+                used_hosts_per_remote_dc=1,
             )
 
             # Create cluster
@@ -109,7 +113,7 @@ class CassandraConnection:
                 auth_provider=auth_provider,
                 load_balancing_policy=load_balancing_policy,
                 max_schema_agreement_wait=self.config.MAX_SCHEMA_AGREEMENT_WAIT,
-                control_connection_timeout=self.config.CONTROL_CONNECTION_TIMEOUT
+                control_connection_timeout=self.config.CONTROL_CONNECTION_TIMEOUT,
             )
 
             # Create session
@@ -118,13 +122,15 @@ class CassandraConnection:
 
             print(f"🔌 Connected to Cassandra cluster: {', '.join(self.config.HOSTS)}")
             print(f"📊 Load balancing: {len(self.config.HOSTS)} nodes")
-            
+
             # Set default keyspace if it exists
             try:
                 self.session.set_keyspace(self.config.KEYSPACE)
                 print(f"📁 Using keyspace: {self.config.KEYSPACE}")
             except InvalidRequest:
-                print(f"⚠️ Keyspace '{self.config.KEYSPACE}' not found - will operate without default keyspace")
+                print(
+                    f"⚠️ Keyspace '{self.config.KEYSPACE}' not found - will operate without default keyspace"
+                )
 
             return self.cluster
 
@@ -158,7 +164,7 @@ class CassandraConnection:
             Query result set
         """
         print(f"\n🔍 {description or 'Executing query'}")
-        
+
         # Handle different query types
         if isinstance(query, str):
             query_str = query
@@ -182,19 +188,21 @@ class CassandraConnection:
                 result = session.execute(statement)
 
             execution_time = time.time() - start_time
-            
+
             # Convert to list for easier handling
             if result:
                 result_list = list(result)
                 row_count = len(result_list)
-                print(f"✅ Query completed in {execution_time:.3f}s, returned {row_count} rows")
+                print(
+                    f"✅ Query completed in {execution_time:.3f}s, returned {row_count} rows"
+                )
             else:
                 result_list = []
                 print(f"✅ Query completed in {execution_time:.3f}s")
 
             self.stats["queries"] += 1
             self.stats["query_time"] += execution_time
-            
+
             if isinstance(query, PreparedStatement):
                 self.stats["prepared_queries"] += 1
 
@@ -218,7 +226,7 @@ class CassandraConnection:
             Prepared statement
         """
         cache_key = cache_key or query
-        
+
         if cache_key in self.prepared_statements:
             print(f"🎯 Using cached prepared statement: {cache_key[:30]}...")
             return self.prepared_statements[cache_key]
@@ -227,7 +235,7 @@ class CassandraConnection:
             session = self.get_session()
             prepared = session.prepare(query)
             self.prepared_statements[cache_key] = prepared
-            
+
             print(f"⚡ Prepared statement cached: {cache_key[:30]}...")
             return prepared
 
@@ -291,7 +299,7 @@ class CassandraConnection:
 
         return {
             "queries_executed": self.stats["queries"],
-            "prepared_statements_used": self.stats["prepared_queries"], 
+            "prepared_statements_used": self.stats["prepared_queries"],
             "batch_operations": self.stats["batch_queries"],
             "errors": self.stats["errors"],
             "connections_created": self.stats["connections"],
@@ -314,7 +322,7 @@ def display_results(results: List[Any], max_rows: int = 20):
         return
 
     # Get column names from first row
-    if hasattr(results[0], '_fields'):
+    if hasattr(results[0], "_fields"):
         headers = results[0]._fields
     else:
         # If no field names, create generic headers
@@ -357,7 +365,9 @@ def display_results(results: List[Any], max_rows: int = 20):
         displayed_rows += 1
 
     print("└" + "┴".join("─" * (w + 2) for w in widths) + "┘")
-    print(f"📈 Displayed {min(displayed_rows, len(results))} of {len(results)} total rows")
+    print(
+        f"📈 Displayed {min(displayed_rows, len(results))} of {len(results)} total rows"
+    )
 
 
 def get_cluster_info(cassandra_conn: CassandraConnection) -> Dict[str, Any]:
@@ -407,10 +417,9 @@ def create_sample_keyspace_and_tables(cassandra_conn: CassandraConnection):
             'datacenter1': 3
         }}
     """
-    
+
     cassandra_conn.execute_query(
-        create_keyspace_query,
-        description="Creating sample keyspace"
+        create_keyspace_query, description="Creating sample keyspace"
     )
 
     # Use the keyspace
@@ -474,20 +483,16 @@ def create_sample_keyspace_and_tables(cassandra_conn: CassandraConnection):
 
     try:
         cassandra_conn.execute_query(
-            create_events_table,
-            description="Creating user_events table"
+            create_events_table, description="Creating user_events table"
         )
         cassandra_conn.execute_query(
-            create_users_table,
-            description="Creating users table"
+            create_users_table, description="Creating users table"
         )
         cassandra_conn.execute_query(
-            create_metrics_table,
-            description="Creating system_metrics table"
+            create_metrics_table, description="Creating system_metrics table"
         )
         cassandra_conn.execute_query(
-            create_counters_table,
-            description="Creating event_counters table"
+            create_counters_table, description="Creating event_counters table"
         )
 
         print("✅ Sample keyspace and tables created successfully!")
@@ -505,22 +510,28 @@ def insert_sample_data(cassandra_conn: CassandraConnection):
 
     # Sample users data
     user_ids = [uuid.uuid4() for _ in range(5)]
-    
+
     # Prepare statements for efficient insertion
-    insert_user = cassandra_conn.prepare_statement("""
+    insert_user = cassandra_conn.prepare_statement(
+        """
         INSERT INTO users (user_id, username, email, created_at, profile, preferences)
         VALUES (?, ?, ?, ?, ?, ?)
-    """)
+    """
+    )
 
-    insert_event = cassandra_conn.prepare_statement("""
+    insert_event = cassandra_conn.prepare_statement(
+        """
         INSERT INTO user_events (user_id, event_date, event_time, event_id, event_type, properties)
         VALUES (?, ?, ?, ?, ?, ?)
-    """)
+    """
+    )
 
-    insert_metric = cassandra_conn.prepare_statement("""
+    insert_metric = cassandra_conn.prepare_statement(
+        """
         INSERT INTO system_metrics (metric_name, time_bucket, metric_time, value, tags)
         VALUES (?, ?, ?, ?, ?)
-    """)
+    """
+    )
 
     try:
         # Insert users
@@ -530,16 +541,13 @@ def insert_sample_data(cassandra_conn: CassandraConnection):
                 user_id,
                 f"user_{i+1}",
                 f"user{i+1}@example.com",
-                datetime.now() - timedelta(days=30-i),
-                {"city": f"City_{i+1}", "country": "USA", "age": str(25+i)},
-                {f"feature_{j}" for j in range(3)}
+                datetime.now() - timedelta(days=30 - i),
+                {"city": f"City_{i+1}", "country": "USA", "age": str(25 + i)},
+                {f"feature_{j}" for j in range(3)},
             )
             user_batch.append((insert_user, user_data))
 
-        cassandra_conn.execute_batch(
-            user_batch,
-            description="Inserting sample users"
-        )
+        cassandra_conn.execute_batch(user_batch, description="Inserting sample users")
 
         # Insert events for each user
         event_batch = []
@@ -547,35 +555,34 @@ def insert_sample_data(cassandra_conn: CassandraConnection):
             for day_offset in range(7):  # Last 7 days
                 event_date = datetime.now().date() - timedelta(days=day_offset)
                 for hour in range(3):  # 3 events per day
-                    event_time = datetime.combine(event_date, datetime.min.time()) + timedelta(hours=hour*8)
+                    event_time = datetime.combine(
+                        event_date, datetime.min.time()
+                    ) + timedelta(hours=hour * 8)
                     event_data = (
                         user_id,
                         event_date,
                         event_time,
                         uuid.uuid1(),  # timeuuid
                         "page_view",
-                        {"page": f"/page_{hour}", "duration": str(30+hour*10)}
+                        {"page": f"/page_{hour}", "duration": str(30 + hour * 10)},
                     )
                     event_batch.append((insert_event, event_data))
 
-        cassandra_conn.execute_batch(
-            event_batch,
-            description="Inserting sample events"
-        )
+        cassandra_conn.execute_batch(event_batch, description="Inserting sample events")
 
         # Insert system metrics
         metrics_batch = []
         for hour_offset in range(24):  # Last 24 hours
             metric_time = datetime.now() - timedelta(hours=hour_offset)
             time_bucket = metric_time.replace(minute=0, second=0, microsecond=0)
-            
+
             # CPU metric
             cpu_data = (
                 "cpu_usage",
                 time_bucket,
                 metric_time,
                 50.0 + (hour_offset % 10) * 5.0,
-                {"host": "server1", "core": "0"}
+                {"host": "server1", "core": "0"},
             )
             metrics_batch.append((insert_metric, cpu_data))
 
@@ -585,13 +592,12 @@ def insert_sample_data(cassandra_conn: CassandraConnection):
                 time_bucket,
                 metric_time,
                 70.0 + (hour_offset % 15) * 2.0,
-                {"host": "server1", "type": "used"}
+                {"host": "server1", "type": "used"},
             )
             metrics_batch.append((insert_metric, memory_data))
 
         cassandra_conn.execute_batch(
-            metrics_batch,
-            description="Inserting sample metrics"
+            metrics_batch, description="Inserting sample metrics"
         )
 
         print("✅ Sample data inserted successfully!")
@@ -608,36 +614,25 @@ def parse_common_args() -> argparse.ArgumentParser:
     Returns:
         Configured argument parser
     """
-    parser = argparse.ArgumentParser(
-        description="Cassandra Building Block Application"
-    )
+    parser = argparse.ArgumentParser(description="Cassandra Building Block Application")
 
     parser.add_argument(
-        "--hosts", 
-        nargs='+',
-        default=CassandraConfig.HOSTS, 
-        help="Cassandra host addresses"
+        "--hosts",
+        nargs="+",
+        default=CassandraConfig.HOSTS,
+        help="Cassandra host addresses",
     )
     parser.add_argument(
-        "--port", 
-        type=int, 
-        default=CassandraConfig.PORT, 
-        help="Cassandra port"
+        "--port", type=int, default=CassandraConfig.PORT, help="Cassandra port"
     )
     parser.add_argument(
-        "--keyspace", 
-        default=CassandraConfig.KEYSPACE, 
-        help="Keyspace name"
+        "--keyspace", default=CassandraConfig.KEYSPACE, help="Keyspace name"
     )
     parser.add_argument(
-        "--username", 
-        default=CassandraConfig.USERNAME, 
-        help="Cassandra username"
+        "--username", default=CassandraConfig.USERNAME, help="Cassandra username"
     )
     parser.add_argument(
-        "--password", 
-        default=CassandraConfig.PASSWORD, 
-        help="Cassandra password"
+        "--password", default=CassandraConfig.PASSWORD, help="Cassandra password"
     )
     parser.add_argument(
         "--timeout",
@@ -673,6 +668,7 @@ def handle_errors(func):
             print(f"❌ Unexpected error: {e}")
             if hasattr(e, "__traceback__"):
                 import traceback
+
                 traceback.print_exc()
             sys.exit(1)
 
@@ -694,8 +690,7 @@ if __name__ == "__main__":
         # Test query execution
         test_query = "SELECT cluster_name, release_version FROM system.local"
         results = cassandra_conn.execute_query(
-            test_query, 
-            description="Testing basic query"
+            test_query, description="Testing basic query"
         )
         display_results(results)
 
