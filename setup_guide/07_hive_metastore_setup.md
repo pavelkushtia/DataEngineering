@@ -629,6 +629,229 @@ sudo systemctl status hive-metastore
 sudo su - hive -c "$HIVE_HOME/bin/hive --service metatool -listFSRoot"
 ```
 
+## Step 11: Client Usage Examples
+
+### **How to Connect from Different Engines**
+
+Now that your Hive Metastore is running, here are practical examples of how to use it from various clients:
+
+#### **1. Trino Connection**
+
+**Configure Trino Catalog** (`/opt/trino/etc/catalog/hive.properties`):
+```properties
+connector.name=hive
+hive.metastore.uri=thrift://192.168.1.184:9083
+hive.allow-drop-table=true
+hive.allow-rename-table=true
+```
+
+**Test from Trino CLI:**
+```sql
+-- Connect to Trino
+trino --server localhost:8080 --catalog hive --schema default
+
+-- Verify metastore connection
+SHOW SCHEMAS;
+
+-- Create a test table
+CREATE TABLE hive.default.test_table (
+    id INTEGER,
+    name VARCHAR(50),
+    created_date DATE
+);
+
+-- Insert test data
+INSERT INTO hive.default.test_table VALUES 
+(1, 'Alice', DATE '2023-01-01'),
+(2, 'Bob', DATE '2023-01-02');
+
+-- Query the data
+SELECT * FROM hive.default.test_table;
+
+-- Verify in PostgreSQL metastore
+-- (Run this in separate terminal)
+-- sudo su - postgres -c "psql metastore -c 'SELECT * FROM \"TBLS\";'"
+```
+
+#### **2. Spark Connection**
+
+**Configure Spark with Hive Metastore** (`spark-defaults.conf`):
+```properties
+spark.sql.catalog.spark_catalog=org.apache.spark.sql.hive.HiveSessionCatalog
+spark.sql.catalog.spark_catalog.type=hive
+spark.hadoop.hive.metastore.uris=thrift://192.168.1.184:9083
+```
+
+**Test from Spark Shell:**
+```scala
+// Start spark-shell or pyspark
+spark-shell
+
+// Verify metastore connection
+spark.sql("SHOW DATABASES").show()
+
+// Create a test table
+spark.sql("""
+    CREATE TABLE IF NOT EXISTS spark_test (
+        user_id INT,
+        username STRING,
+        login_time TIMESTAMP
+    ) USING PARQUET
+    LOCATION 'hdfs://192.168.1.184:9000/lakehouse/spark_test'
+""")
+
+// Insert test data
+spark.sql("""
+    INSERT INTO spark_test VALUES 
+    (101, 'user1', current_timestamp()),
+    (102, 'user2', current_timestamp())
+""")
+
+// Query the data
+spark.sql("SELECT * FROM spark_test").show()
+
+// List tables
+spark.sql("SHOW TABLES").show()
+```
+
+**Python/PySpark Example:**
+```python
+from pyspark.sql import SparkSession
+
+# Create Spark session with Hive support
+spark = SparkSession.builder \
+    .appName("HiveMetastoreTest") \
+    .config("spark.sql.catalog.spark_catalog.type", "hive") \
+    .config("spark.hadoop.hive.metastore.uris", "thrift://192.168.1.184:9083") \
+    .enableHiveSupport() \
+    .getOrCreate()
+
+# Test connection
+spark.sql("SHOW DATABASES").show()
+
+# Create DataFrame and save as table
+data = [(1, "John", 25), (2, "Jane", 30), (3, "Bob", 35)]
+columns = ["id", "name", "age"]
+df = spark.createDataFrame(data, columns)
+
+df.write \
+  .mode("overwrite") \
+  .option("path", "hdfs://192.168.1.184:9000/lakehouse/python_test") \
+  .saveAsTable("python_test")
+
+# Read back the table
+result = spark.sql("SELECT * FROM python_test")
+result.show()
+```
+
+#### **3. Flink Connection**
+
+**Configure Flink with Hive Catalog** (`flink-conf.yaml`):
+```yaml
+table.catalog.hive_catalog.type: hive
+table.catalog.hive_catalog.hive-conf-dir: /opt/hive/current/conf
+table.catalog.hive_catalog.default-database: default
+```
+
+**Test from Flink SQL Client:**
+```sql
+-- Start Flink SQL Client
+./bin/sql-client.sh
+
+-- Set catalog
+USE CATALOG hive_catalog;
+
+-- Show databases
+SHOW DATABASES;
+
+-- Create table
+CREATE TABLE flink_test (
+    event_id INT,
+    event_name STRING,
+    event_time TIMESTAMP(3)
+) WITH (
+    'connector' = 'filesystem',
+    'path' = 'hdfs://192.168.1.184:9000/lakehouse/flink_test',
+    'format' = 'parquet'
+);
+
+-- Insert data
+INSERT INTO flink_test VALUES 
+(1, 'login', LOCALTIMESTAMP),
+(2, 'logout', LOCALTIMESTAMP);
+
+-- Query data
+SELECT * FROM flink_test;
+```
+
+#### **4. Direct Metastore Client Testing**
+
+**Test Metastore Connectivity:**
+```bash
+# Test from any client machine
+telnet 192.168.1.184 9083
+# Should connect successfully
+
+# List filesystem roots
+sudo su - hive -c "export HIVE_HOME=/opt/hive/current && \$HIVE_HOME/bin/hive --service metatool -listFSRoot"
+
+# Check metastore status
+sudo su - hive -c "export HIVE_HOME=/opt/hive/current && \$HIVE_HOME/bin/hive --service metatool -info"
+```
+
+**Monitor Table Creation in PostgreSQL:**
+```bash
+# Watch tables being created in real-time
+sudo su - postgres -c "psql metastore -c 'SELECT TBL_NAME, TBL_TYPE, CREATE_TIME FROM \"TBLS\" ORDER BY CREATE_TIME DESC;'"
+
+# Check table schemas
+sudo su - postgres -c "psql metastore -c 'SELECT t.TBL_NAME, c.COLUMN_NAME, c.TYPE_NAME FROM \"TBLS\" t JOIN \"SDS\" s ON t.SD_ID = s.SD_ID JOIN \"COLUMNS_V2\" c ON s.CD_ID = c.CD_ID ORDER BY t.TBL_NAME, c.INTEGER_IDX;'"
+```
+
+### **5. Client Configuration Files**
+
+**For Other Nodes (cpu-node2, worker-node3):**
+
+Create `hive-site.xml` for client access:
+```xml
+<?xml version="1.0"?>
+<configuration>
+    <property>
+        <name>hive.metastore.uris</name>
+        <value>thrift://192.168.1.184:9083</value>
+        <description>Hive Metastore Server</description>
+    </property>
+    
+    <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>hdfs://192.168.1.184:9000/lakehouse</value>
+        <description>Warehouse directory</description>
+    </property>
+    
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://192.168.1.184:9000</value>
+        <description>Default filesystem</description>
+    </property>
+</configuration>
+```
+
+### **6. Troubleshooting Client Connections**
+
+```bash
+# Test connectivity
+telnet 192.168.1.184 9083
+
+# Check if metastore is accepting connections
+sudo netstat -an | grep 9083
+
+# Test from client with hive command
+hive --service metatool -listFSRoot
+
+# Check logs for connection issues
+sudo journalctl -u hive-metastore -f
+```
+
 ## Next Steps
 
 ✅ **Hive Metastore is now running and ready!**
