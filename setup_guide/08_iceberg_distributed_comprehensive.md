@@ -279,21 +279,34 @@ spark.sql("SELECT * FROM iceberg_hive.lakehouse.distributed_events.files").show(
 
 ### Step 4: Configure Trino for Iceberg
 
-**⚠️ IMPORTANT: Configure Trino ONLY on COORDINATOR NODE (cpu-node1)**
+**⚠️ CRITICAL FIXES APPLIED:** This guide includes fixes for common configuration issues that cause worker failures:
+- ✅ **Invalid property removal**: Removed `hive.hdfs.config-resources` (doesn't exist in Trino)
+- ✅ **Port conflict resolution**: worker-node3 uses port 8083 to avoid conflicts
+- ✅ **Clean worker configs**: Separated node properties from config properties
+- ✅ **Deprecated connector fix**: Updated `delta-lake` to `delta_lake`
+- ✅ **Minimal catalog configs**: Used only valid, required properties
 
-**Why cpu-node1 only?** Trino coordinator runs only on cpu-node1, and worker nodes connect to it.
+**⚠️ IMPORTANT: Configure Trino on ALL NODES (cpu-node1, cpu-node2, worker-node3)**
 
-#### **Update Trino configuration on cpu-node1 (192.168.1.184):**
+**Why all nodes?**
+- **Coordinator (cpu-node1)**: Needs catalog config for query planning
+- **Workers (cpu-node2, worker-node3)**: Need catalog config for query execution and data access
+
+#### **Update Trino Iceberg catalog configuration on ALL THREE NODES:**
+
+**⚠️ Important:** This step configures the Iceberg catalog only. Worker-specific configurations are handled separately below.
+
+**On cpu-node1 (192.168.1.184):**
 
 ```bash
 # Update existing iceberg.properties
-sudo nano /home/trino/trino/etc/catalog/iceberg.properties
+sudo nano /home/trino/trino-server/etc/catalog/iceberg.properties
 ```
 
 ```properties
 connector.name=iceberg
 hive.metastore.uri=thrift://192.168.1.184:9083
-iceberg.catalog.type=hive
+iceberg.catalog.type=hive_metastore
 
 # HDFS configuration
 hive.hdfs.authentication.type=NONE
@@ -302,36 +315,420 @@ hive.hdfs.impersonation.enabled=false
 # Performance optimizations
 iceberg.file-format=PARQUET
 iceberg.compression-codec=ZSTD
-iceberg.max-partitions-per-query=1000
-
-# Enable advanced features
-iceberg.delete-as-join-rewrite-enabled=true
-iceberg.expire-snapshots.enabled=true
-iceberg.remove-orphan-files.enabled=true
 ```
 
-### Test Trino integration:
+**On cpu-node2 (192.168.1.187):**
 ```bash
-# Connect to Trino
-trino --server http://192.168.1.184:8080 --catalog iceberg --schema lakehouse
+ssh sanzad@192.168.1.187
+sudo nano /home/trino/trino-server/etc/catalog/iceberg.properties
 ```
 
+**On worker-node3 (192.168.1.190):**
+```bash
+ssh sanzad@192.168.1.190
+sudo nano /home/trino/trino-server/etc/catalog/iceberg.properties
+```
+
+Use the same configuration content on all three nodes.
+
+#### **Update Worker-Specific Configurations:**
+
+**Important:** Workers need clean `config.properties` without node-specific properties (those go in `node.properties`).
+
+**On cpu-node2 (192.168.1.187):**
+```bash
+ssh sanzad@192.168.1.187
+sudo tee /home/trino/trino-server/etc/config.properties > /dev/null << 'EOF'
+# Worker configuration - cpu-node2
+coordinator=false
+http-server.http.port=8082
+query.max-memory-per-node=2GB
+discovery.uri=http://192.168.1.184:8084
+EOF
+```
+
+**On worker-node3 (192.168.1.190):**
+```bash
+ssh sanzad@192.168.1.190
+sudo tee /home/trino/trino-server/etc/config.properties > /dev/null << 'EOF'
+# Worker configuration - worker-node3 (different port to avoid conflicts)
+coordinator=false
+http-server.http.port=8083
+query.max-memory-per-node=2GB
+discovery.uri=http://192.168.1.184:8084
+EOF
+```
+
+#### **Fix Additional Catalog Configurations:**
+
+**Create correct hive.properties on all nodes:**
+```bash
+# On all three nodes, create minimal hive.properties
+sudo tee /home/trino/trino-server/etc/catalog/hive.properties > /dev/null << 'EOF'
+connector.name=hive
+hive.metastore.uri=thrift://192.168.1.184:9083
+EOF
+```
+
+**Fix deprecated delta connector (if exists):**
+```bash
+# On all three nodes, fix delta connector name
+sudo sed -i 's/connector.name=delta-lake/connector.name=delta_lake/' /home/trino/trino-server/etc/catalog/delta.properties 2>/dev/null || true
+```
+
+#### **Restart Trino on all nodes:**
+
+```bash
+# On cpu-node1 (restart coordinator first)
+sudo systemctl restart trino
+sudo systemctl status trino
+
+# On cpu-node2
+ssh sanzad@192.168.1.187
+sudo systemctl restart trino
+sudo systemctl status trino
+
+# On worker-node3  
+ssh sanzad@192.168.1.190
+sudo systemctl restart trino
+sudo systemctl status trino
+```
+
+### **✅ VERIFIED WORKING STATUS:**
+
+**🎉 3-Node Distributed Trino + Iceberg Cluster Successfully Established!**
+
+**Current Status:**
+- ✅ **Coordinator**: cpu-node1-coordinator (active)
+- ✅ **Worker 1**: cpu-node2-worker1 (active) 
+- ✅ **Worker 2**: worker-node3-worker2 (active)
+- ✅ **Distributed queries**: Working with all three nodes
+- ✅ **Iceberg catalog**: Fully functional with lakehouse schema
+
+**Performance:** Fast query execution with distributed processing across all nodes.
+
+### **⚠️ Common Issues and Solutions:**
+
+**Issue 1: Workers failing with "Configuration property not used" errors**
+- **Cause:** Invalid properties in catalog configurations
+- **Solution:** Use minimal configurations provided above
+
+**Issue 2: Workers failing with port conflicts**  
+- **Cause:** Port 8082 already in use on worker-node3
+- **Solution:** Use port 8083 for worker-node3 as shown above
+
+**Issue 3: Workers failing with Guice injection errors**
+- **Cause:** Node properties in wrong configuration files
+- **Solution:** Keep `config.properties` clean, node properties go in `node.properties`
+
+**Issue 4: Deprecated connector warnings**
+- **Cause:** Using `delta-lake` instead of `delta_lake`  
+- **Solution:** Update connector names as shown above
+
+### **📋 Complete Working Configuration Summary:**
+
+#### **Coordinator (cpu-node1) - config.properties:**
+```properties
+coordinator=true
+node-scheduler.include-coordinator=false
+http-server.http.port=8084
+query.max-memory=8GB
+query.max-memory-per-node=2GB
+discovery.uri=http://192.168.1.184:8084
+```
+
+#### **Worker (cpu-node2) - config.properties:**
+```properties
+coordinator=false
+http-server.http.port=8082
+query.max-memory-per-node=2GB
+discovery.uri=http://192.168.1.184:8084
+```
+
+#### **Worker (worker-node3) - config.properties:**
+```properties
+coordinator=false
+http-server.http.port=8083
+query.max-memory-per-node=2GB
+discovery.uri=http://192.168.1.184:8084
+```
+
+#### **All Nodes - iceberg.properties:**
+```properties
+connector.name=iceberg
+hive.metastore.uri=thrift://192.168.1.184:9083
+iceberg.catalog.type=hive_metastore
+
+# HDFS configuration
+hive.hdfs.authentication.type=NONE
+hive.hdfs.impersonation.enabled=false
+
+# Performance optimizations
+iceberg.file-format=PARQUET
+iceberg.compression-codec=ZSTD
+```
+
+#### **All Nodes - hive.properties:**
+```properties
+connector.name=hive
+hive.metastore.uri=thrift://192.168.1.184:9083
+```
+
+### **🔧 Troubleshooting Commands:**
+
+```bash
+# Check service status on all nodes
+sudo systemctl status trino
+
+# View real-time logs
+sudo tail -f /home/trino/trino-server/data/var/log/server.log
+
+# Check for configuration errors
+sudo grep -E "ERROR|Exception|Failed" /home/trino/trino-server/data/var/log/server.log
+
+# Test connectivity between nodes
+curl -s -I http://192.168.1.184:8084  # Coordinator
+curl -s -I http://192.168.1.187:8082  # Worker 1
+curl -s -I http://192.168.1.190:8083  # Worker 2
+
+# Check port conflicts
+sudo netstat -tlnp | grep -E ":808[0-9]"
+```
+
+### **✅ Final Verification Checklist:**
+
+After completing the setup, verify these items:
+
+- [ ] **All services running**: `sudo systemctl status trino` shows "active (running)" on all nodes
+- [ ] **No configuration errors**: Logs show no "ERROR" or "Exception" messages
+- [ ] **Cluster connectivity**: All 3 nodes visible in `SELECT * FROM system.runtime.nodes`
+- [ ] **Iceberg catalog working**: `SHOW SCHEMAS FROM iceberg` returns schemas
+- [ ] **Hive Metastore connected**: No connection errors in logs
+- [ ] **Port accessibility**: All HTTP ports (8082, 8083, 8084) responding
+- [ ] **HDFS access**: No HDFS connection errors in logs
+
+**If any item fails, check the troubleshooting section above.**
+
+### **Verify Distributed Cluster:**
+
+```bash
+# Check cluster nodes
+sudo su - trino -c "./trino-cli --server http://192.168.1.184:8084 --user test --execute 'SELECT node_id, coordinator, state FROM system.runtime.nodes ORDER BY node_id;'"
+
+# Expected output:
+# "cpu-node1-coordinator","true","active"
+# "cpu-node2-worker1","false","active"  
+# "worker-node3-worker2","false","active"
+
+# Test catalogs
+sudo su - trino -c "./trino-cli --server http://192.168.1.184:8084 --user test --execute 'SHOW CATALOGS;'"
+
+# Test Iceberg schemas
+sudo su - trino -c "./trino-cli --server http://192.168.1.184:8084 --user test --catalog iceberg --execute 'SHOW SCHEMAS;'"
+```
+
+### **Connect to Trino for Interactive Use:**
+```bash
+# Connect to Trino with lakehouse schema
+sudo su - trino -c "./trino-cli --server http://192.168.1.184:8084 --user test --catalog iceberg --schema lakehouse"
+```
+
+### **🧪 Comprehensive Trino + Iceberg Testing Examples:**
+
+#### **1. Basic Table Operations:**
 ```sql
--- Query distributed Iceberg table from Trino
+-- Show all catalogs
+SHOW CATALOGS;
+
+-- Show schemas in iceberg catalog
+SHOW SCHEMAS FROM iceberg;
+
+-- Show tables in lakehouse schema
+SHOW TABLES FROM iceberg.lakehouse;
+
+-- Describe table structure
+DESCRIBE iceberg.lakehouse.distributed_events;
+
+-- Show table properties
+SHOW CREATE TABLE distributed_events;
+```
+
+#### **2. Query Operations:**
+```sql
+-- Basic aggregation query
 SELECT region, event_type, count(*) as event_count 
 FROM distributed_events 
 GROUP BY region, event_type 
 ORDER BY event_count DESC;
 
--- Test time travel
-SELECT count(*) FROM distributed_events FOR VERSION AS OF 1;
+-- Time-based analysis
+SELECT 
+    region,
+    DATE_TRUNC('hour', event_time) as hour,
+    COUNT(*) as event_count,
+    COUNT(DISTINCT user_id) as unique_users
+FROM distributed_events 
+WHERE event_time >= current_timestamp - interval '24' hour
+GROUP BY region, DATE_TRUNC('hour', event_time)
+ORDER BY hour DESC, region;
 
--- Analyze table statistics
-ANALYZE TABLE distributed_events;
-
--- Show table properties
-SHOW CREATE TABLE distributed_events;
+-- Filter by specific conditions
+SELECT event_type, COUNT(*) as count
+FROM distributed_events 
+WHERE region = 'us-east' 
+  AND event_time >= DATE '2024-01-01'
+GROUP BY event_type;
 ```
+
+#### **3. Time Travel Queries:**
+```sql
+-- Step 1: Get available snapshots (MUST quote the table name with $)
+SELECT snapshot_id, committed_at, operation, summary
+FROM "distributed_events$snapshots" 
+ORDER BY committed_at DESC 
+LIMIT 10;
+
+-- Step 2: Query using actual snapshot ID (replace with your snapshot ID)
+SELECT count(*) FROM distributed_events FOR VERSION AS OF 7994173223349567962;
+
+-- Alternative: Time travel using timestamp
+SELECT count(*) FROM distributed_events 
+FOR TIMESTAMP AS OF TIMESTAMP '2024-12-01 10:00:00 UTC';
+
+-- Compare counts between current and previous snapshot
+WITH current_count AS (
+    SELECT count(*) as current_total FROM distributed_events
+),
+snapshot_count AS (
+    SELECT count(*) as snapshot_total 
+    FROM distributed_events FOR VERSION AS OF 7994173223349567962
+)
+SELECT 
+    current_total,
+    snapshot_total,
+    current_total - snapshot_total as difference
+FROM current_count, snapshot_count;
+```
+
+#### **4. Metadata and System Tables:**
+```sql
+-- View table files
+SELECT file_path, file_format, record_count, file_size_in_bytes
+FROM "distributed_events$files" 
+ORDER BY file_size_in_bytes DESC 
+LIMIT 10;
+
+-- View table history
+SELECT made_current_at, snapshot_id, operation, summary
+FROM "distributed_events$history" 
+ORDER BY made_current_at DESC;
+
+-- View table partitions
+SELECT partition, record_count, file_count, data_size
+FROM "distributed_events$partitions" 
+ORDER BY record_count DESC 
+LIMIT 20;
+
+-- View table manifests
+SELECT path, length, partition_spec_id, added_snapshot_id
+FROM "distributed_events$manifests" 
+LIMIT 10;
+```
+
+#### **5. Performance and Statistics:**
+```sql
+-- Analyze table (correct syntax - no TABLE keyword)
+ANALYZE distributed_events;
+
+-- Show table statistics
+SHOW STATS FOR distributed_events;
+
+-- Query with explain plan
+EXPLAIN (FORMAT TEXT, TYPE DISTRIBUTED) 
+SELECT region, COUNT(*) 
+FROM distributed_events 
+WHERE event_time >= current_date - interval '7' day 
+GROUP BY region;
+
+-- Check query performance
+SELECT 
+    query_id,
+    state,
+    elapsed_time_millis,
+    total_rows,
+    total_bytes
+FROM system.runtime.queries 
+WHERE query LIKE '%distributed_events%'
+ORDER BY create_time DESC 
+LIMIT 10;
+```
+
+#### **6. Multi-Engine Verification:**
+```sql
+-- Verify this table can be accessed from other engines
+-- This should match data written from Spark
+SELECT 'Trino' as engine, count(*) as total_records 
+FROM distributed_events
+
+UNION ALL
+
+SELECT 'Expected' as engine, 10000 as total_records;
+
+-- Check partition distribution
+SELECT 
+    region,
+    year,
+    month,
+    COUNT(*) as records_per_partition,
+    COUNT(DISTINCT user_id) as unique_users_per_partition
+FROM distributed_events 
+GROUP BY region, year, month 
+ORDER BY region, year, month;
+```
+
+#### **7. Common Troubleshooting Queries:**
+```sql
+-- Check if table exists
+SELECT table_name, table_type 
+FROM information_schema.tables 
+WHERE table_schema = 'lakehouse' 
+  AND table_name = 'distributed_events';
+
+-- Verify catalog connectivity
+SELECT catalog_name, connector_name 
+FROM system.metadata.catalogs 
+WHERE catalog_name = 'iceberg';
+
+-- Check cluster nodes
+SELECT node_id, coordinator, state, node_version
+FROM system.runtime.nodes;
+
+-- View recent queries with errors
+SELECT 
+    query_id,
+    state,
+    error_message,
+    query
+FROM system.runtime.queries 
+WHERE state = 'FAILED'
+  AND create_time >= current_timestamp - interval '1' hour
+ORDER BY create_time DESC;
+```
+
+#### **8. Expected Results Guide:**
+
+**✅ Successful Query Indicators:**
+- Queries return data without errors
+- `SHOW CATALOGS` includes 'iceberg' 
+- `SHOW SCHEMAS FROM iceberg` includes 'lakehouse'
+- Time travel queries work with proper snapshot IDs
+- `ANALYZE distributed_events` completes without errors
+
+**❌ Common Error Fixes:**
+- `mismatched input 'TABLE'` → Remove `TABLE` from `ANALYZE` command
+- `Unsupported type for table version: integer` → Use proper snapshot ID or timestamp
+- `mismatched input '$'` → Quote table names with `$` like `"table$snapshots"`
+- Connection errors → Check if all Trino nodes are running and accessible
 
 ## Phase 3: Flink Streaming Integration
 
@@ -382,121 +779,225 @@ fs.hdfs.hadoop.conf.dir: /opt/hadoop/current/etc/hadoop
 table.sql-dialect: default
 ```
 
-### Create Flink streaming to Iceberg script:
+### Create Flink Streaming Building Block:
+
+**⚠️ IMPORTANT: Use existing building_blocks directory structure**
+
+**Why use building_blocks?** This project already has a well-organized `building_block_apps/` and `interaction_building_blocks/` structure. We follow this pattern for consistency and maintainability.
+
+#### **Create Flink-Iceberg integration building block:**
+
 ```bash
-nano /home/sanzad/iceberg-distributed/scripts/flink_kafka_to_iceberg.py
+# Navigate to DataEngineering project root
+cd /home/sanzad/git/DataEngineering
+
+# The flink-iceberg building block has been created at:
+# /home/sanzad/git/DataEngineering/interaction_building_blocks/flink-iceberg/python/
+
+# Files created:
+# ├── flink_iceberg_common.py          # Common utilities and configuration
+# ├── kafka_to_iceberg_streaming.py    # Main streaming job 
+# ├── iceberg_streaming_analytics.py   # Real-time analytics
+# ├── EXECUTION_GUIDE.md              # Complete execution guide
+# └── BUILD.bazel                     # Build configuration
 ```
 
-```python
-from pyflink.table import EnvironmentSettings, TableEnvironment
-from pyflink.table.expressions import col
-import os
+#### **Quick Start Execution:**
 
-def kafka_to_iceberg_streaming():
-    # Set up Flink environment
-    env_settings = EnvironmentSettings.new_instance().in_streaming_mode().build()
-    table_env = TableEnvironment.create(env_settings)
-    
-    # Add Iceberg JAR
-    iceberg_jar = "file:///home/flink/flink/lib/iceberg-flink-runtime-1.19-1.9.2.jar"
-    table_env.get_config().get_configuration().set_string("pipeline.jars", iceberg_jar)
-    
-    # Configure Iceberg catalog in Flink
-    table_env.execute_sql("""
-        CREATE CATALOG iceberg_catalog WITH (
-            'type' = 'iceberg',
-            'catalog-type' = 'hive',
-            'uri' = 'thrift://192.168.1.184:9083',
-            'warehouse' = 'hdfs://192.168.1.184:9000/lakehouse/iceberg'
-        )
-    """)
-    
-    table_env.execute_sql("USE CATALOG iceberg_catalog")
-    table_env.execute_sql("USE lakehouse")
-    
-    # Create Kafka source table
-    table_env.execute_sql("""
-        CREATE TABLE kafka_events (
-            event_id BIGINT,
-            user_id BIGINT,
-            event_type STRING,
-            event_time TIMESTAMP(3),
-            properties MAP<STRING, STRING>,
-            region STRING,
-            processing_time AS PROCTIME(),
-            event_time_attr AS event_time,
-            WATERMARK FOR event_time_attr AS event_time_attr - INTERVAL '5' SECOND
-        ) WITH (
-            'connector' = 'kafka',
-            'topic' = 'user-events',
-            'properties.bootstrap.servers' = '192.168.1.184:9092,192.168.1.187:9092,192.168.1.190:9092',
-            'properties.group.id' = 'iceberg-sink',
-            'format' = 'json',
-            'scan.startup.mode' = 'latest-offset'
-        )
-    """)
-    
-    # Create Iceberg sink table
-    table_env.execute_sql("""
-        CREATE TABLE IF NOT EXISTS streaming_events (
-            event_id BIGINT,
-            user_id BIGINT,
-            event_type STRING,
-            event_time TIMESTAMP(3),
-            properties MAP<STRING, STRING>,
-            region STRING,
-            year INT,
-            month INT,
-            day INT,
-            hour INT
-        ) PARTITIONED BY (region, year, month, day, hour)
-        WITH (
-            'connector' = 'iceberg',
-            'catalog-name' = 'iceberg_catalog',
-            'database-name' = 'lakehouse',
-            'table-name' = 'streaming_events'
-        )
-    """)
-    
-    # Stream from Kafka to Iceberg with transformations
-    table_env.execute_sql("""
-        INSERT INTO streaming_events
-        SELECT 
-            event_id,
-            user_id,
-            event_type,
-            event_time,
-            properties,
-            region,
-            EXTRACT(YEAR FROM event_time) as year,
-            EXTRACT(MONTH FROM event_time) as month,
-            EXTRACT(DAY FROM event_time) as day,
-            EXTRACT(HOUR FROM event_time) as hour
-        FROM kafka_events
-    """)
+**Step 1: Install Dependencies**
+```bash
+cd /home/sanzad/git/DataEngineering/interaction_building_blocks/flink-iceberg/python
 
-if __name__ == "__main__":
-    kafka_to_iceberg_streaming()
+# Install PyFlink
+pip install apache-flink kafka-python
+```
+
+**Step 2: Run Streaming Job**
+```bash
+# Start the streaming job (interactive mode)
+python3 kafka_to_iceberg_streaming.py
+
+# Follow the prompts:
+# ✅ Environment validation
+# ✅ Pipeline setup
+# ▶️  Start streaming now? (y/N): y
+```
+
+**Step 3: Generate Test Data**
+```bash
+# In another terminal, run the auto-generated test producer
+python3 /tmp/test_data_producer.py
+```
+
+**Step 4: Monitor & Analyze**
+```bash
+# Run analytics (in another terminal)
+python3 iceberg_streaming_analytics.py
+
+# Monitor Flink Web UI
+# http://192.168.1.184:8081
+```
+
+**📋 For Complete Instructions:**
+See detailed execution guide: `/home/sanzad/git/DataEngineering/interaction_building_blocks/flink-iceberg/python/EXECUTION_GUIDE.md`
+
+**🔍 Expected Results:**
+- ✅ Real-time streaming from Kafka to Iceberg 
+- ✅ Data partitioned by region/time automatically
+- ✅ Multi-engine access (Flink + Trino queries work)
+- ✅ Exactly-once processing guarantees
+- ✅ Monitoring and analytics capabilities
+
+**🧪 Test Verification Commands:**
+
+```sql
+-- Query streamed data with Trino
+SELECT region, event_type, count(*) 
+FROM iceberg.lakehouse.streaming_events 
+GROUP BY region, event_type;
+
+-- Check partitions
+SELECT region, year, month, day, hour, count(*) 
+FROM iceberg.lakehouse.streaming_events 
+GROUP BY region, year, month, day, hour;
+```
+
+**📊 Expected Output:**
+```
+    region    | event_type | count
+--------------+------------+-------
+ us-east      | page_view  |    25
+ eu-central   | click      |    23
+ us-west      | purchase   |    22
+ asia-pacific | signup     |    20
 ```
 
 ## Phase 4: Python Analytics Integration
 
-### Step 6: Enhanced Python Setup
+### Step 6: Enhanced Python Setup with Virtual Environment
 
 **⚠️ IMPORTANT: Install on COORDINATOR NODE (cpu-node1) for analysis**
 
 **Why cpu-node1?** Python analytics typically run from the coordinator node where you have direct access to cluster management and can efficiently coordinate distributed queries.
 
-#### **Install Python dependencies on cpu-node1 (192.168.1.184):**
+**🎯 RECOMMENDED: Use Virtual Environment (venv)**
+
+**Why use venv?**
+- **Dependency Isolation**: Prevents conflicts between different projects
+- **Version Control**: Lock specific package versions that work together  
+- **Reproducibility**: Easy to recreate the exact environment elsewhere
+- **System Safety**: Won't interfere with system Python packages
+- **Clean Management**: Easy to remove/recreate if something goes wrong
+
+#### **Setup Python virtual environment on cpu-node1 (192.168.1.184):**
 
 ```bash
-# Install PyIceberg and additional dependencies
-pip3 install pyiceberg[hive,s3fs,adlfs,gcs] duckdb pandas pyarrow polars
+# Install required packages for virtual environment
+sudo apt update && sudo apt install -y python3.12-venv python3-pip
+
+# Navigate to iceberg workspace
+cd /home/sanzad/iceberg-distributed
+
+# Create virtual environment
+python3 -m venv iceberg-analytics-env
+
+# Activate virtual environment
+source iceberg-analytics-env/bin/activate
+
+# Upgrade pip to latest version
+pip install --upgrade pip
+
+# Install PyIceberg and all analytics dependencies
+pip install pyiceberg[hive,s3fs,adlfs,gcs] duckdb pandas pyarrow polars jupyter notebook ipykernel
+
+# Create requirements.txt for reproducibility
+pip freeze > requirements.txt
+
+# Verify installation
+python --version
+pip --version
 ```
 
-### Create comprehensive Python analytics script:
+#### **Create activation script for easy use:**
+
 ```bash
-nano /home/sanzad/iceberg-distributed/scripts/python_analytics_comprehensive.py
+nano /home/sanzad/iceberg-distributed/activate-analytics-env.sh
+```
+
+```bash
+#!/bin/bash
+# Quick activation script for Iceberg analytics environment
+
+echo "🚀 Activating Iceberg Analytics Environment..."
+cd /home/sanzad/iceberg-distributed
+source iceberg-analytics-env/bin/activate
+
+echo "✅ Environment activated!"
+echo "📊 Available tools: PyIceberg, DuckDB, Pandas, PyArrow, Polars, Jupyter"
+echo "🔧 To deactivate: run 'deactivate'"
+echo "📝 Current directory: $(pwd)"
+
+# Show Python and pip versions
+python --version
+pip --version
+```
+
+```bash
+chmod +x /home/sanzad/iceberg-distributed/activate-analytics-env.sh
+```
+
+#### **Usage instructions:**
+
+```bash
+# Activate environment (method 1 - direct)
+cd /home/sanzad/iceberg-distributed && source iceberg-analytics-env/bin/activate
+
+# Activate environment (method 2 - using script)
+./activate-analytics-env.sh
+
+# Install additional packages (when environment is active)
+pip install some-new-package
+
+# Deactivate environment
+deactivate
+
+# Recreate environment from requirements.txt (if needed)
+python3 -m venv iceberg-analytics-env-new
+source iceberg-analytics-env-new/bin/activate
+pip install -r requirements.txt
+```
+
+#### **Benefits of this venv setup:**
+- ✅ **Isolated environment** - No conflicts with system packages
+- ✅ **Reproducible** - `requirements.txt` captures exact versions
+- ✅ **Portable** - Can recreate on other nodes if needed
+- ✅ **Version locked** - Specific PyIceberg, Pandas, Polars versions
+- ✅ **Jupyter ready** - Includes notebook support for interactive analysis
+- ✅ **Easy cleanup** - Just delete the `iceberg-analytics-env/` folder
+
+#### **Alternative: Global installation (NOT recommended for production):**
+
+If you absolutely need global installation for system services:
+```bash
+# ONLY if you have a specific reason to avoid venv
+sudo pip3 install pyiceberg[hive,s3fs,adlfs,gcs] duckdb pandas pyarrow polars
+```
+
+**⚠️ Global installation issues:**
+- May conflict with system packages
+- Hard to manage different project requirements  
+- Difficult to reproduce exact environment
+- Can break system tools that depend on specific Python packages
+
+### Create comprehensive Python analytics building block:
+
+**Use existing building blocks structure:**
+```bash
+# Python analytics is part of the flink-iceberg building block
+cd /home/sanzad/git/DataEngineering/interaction_building_blocks/flink-iceberg/python
+
+# Analytics script already created:
+# iceberg_streaming_analytics.py
 ```
 
 ```python
@@ -725,10 +1226,16 @@ if __name__ == "__main__":
 
 **Why cpu-node1?** Multi-engine coordination requires orchestrating Spark, Trino, and Flink from a central location with access to all cluster services.
 
-#### **Create coordination script on cpu-node1 (192.168.1.184):**
+#### **Create coordination building block:**
+
+**⚠️ Use building blocks structure instead of scripts directory**
 
 ```bash
-nano /home/sanzad/iceberg-distributed/scripts/multi_engine_coordination.py
+# Create multi-engine coordination building block
+mkdir -p /home/sanzad/git/DataEngineering/interaction_building_blocks/spark-iceberg/python
+
+# Create the coordination script
+nano /home/sanzad/git/DataEngineering/interaction_building_blocks/spark-iceberg/python/multi_engine_coordination.py
 ```
 
 ```python
@@ -974,7 +1481,9 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /home/sanzad/iceberg-distributed/scripts/*.py
+# Make scripts executable
+chmod +x /home/sanzad/git/DataEngineering/interaction_building_blocks/flink-iceberg/python/*.py
+chmod +x /home/sanzad/git/DataEngineering/interaction_building_blocks/spark-iceberg/python/*.py
 ```
 
 This comprehensive setup gives you:

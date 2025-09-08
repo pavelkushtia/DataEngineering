@@ -320,7 +320,17 @@ nano /home/trino/trino/etc/catalog/iceberg.properties
 ```properties
 connector.name=iceberg
 hive.metastore.uri=thrift://192.168.1.184:9083
-iceberg.catalog.type=hadoop
+iceberg.catalog.type=hive_metastore
+```
+
+### Hive connector:
+```bash
+nano /home/trino/trino/etc/catalog/hive.properties
+```
+
+```properties
+connector.name=hive
+hive.metastore.uri=thrift://192.168.1.184:9083
 ```
 
 ### Delta Lake connector:
@@ -329,7 +339,7 @@ nano /home/trino/trino/etc/catalog/delta.properties
 ```
 
 ```properties
-connector.name=delta-lake
+connector.name=delta_lake
 hive.metastore.uri=thrift://192.168.1.184:9083
 delta.enable-non-concurrent-writes=true
 # Note: Advanced Delta properties may not be available in Trino 435
@@ -708,7 +718,7 @@ done
    - **Cause**: Trino 435 changed Iceberg catalog type values
    - **Solution**: Fix Iceberg catalog configuration:
      ```bash
-     sudo su - trino -c "sed -i 's/iceberg.catalog.type=hive/iceberg.catalog.type=hadoop/' /home/trino/trino/etc/catalog/iceberg.properties"
+     sudo su - trino -c "sed -i 's/iceberg.catalog.type=hive/iceberg.catalog.type=hive_metastore/' /home/trino/trino/etc/catalog/iceberg.properties"
      sudo systemctl restart trino
      ```
    - **Alternative**: Temporarily disable problematic catalogs:
@@ -716,7 +726,18 @@ done
      sudo su - trino -c "mv /home/trino/trino/etc/catalog/iceberg.properties /home/trino/trino/etc/catalog/iceberg.properties.disabled"
      ```
 
-2. **Service Crash Loop** (Exit Code 100):
+2. **Missing Hive Connector Configuration**:
+   - **Error**: `Catalog configuration does not contain connector.name`
+   - **Symptoms**: Worker nodes fail with Guice injection errors
+   - **Solution**: Ensure hive.properties exists on all nodes:
+     ```bash
+     sudo tee /home/trino/trino/etc/catalog/hive.properties > /dev/null << 'EOF'
+connector.name=hive
+hive.metastore.uri=thrift://192.168.1.184:9083
+EOF
+     ```
+
+3. **Service Crash Loop** (Exit Code 100):
    - **Symptoms**: `activating (auto-restart) (Result: exit-code)`, restart counter increasing
    - **Check logs**: `sudo journalctl -u trino.service --no-pager -n 50`
    - **Common causes**: 

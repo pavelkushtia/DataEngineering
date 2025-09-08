@@ -53,7 +53,7 @@ graph TB
 
 ### **Architecture Benefits:**
 - ✅ **Fault Tolerance**: Data replicated across nodes, survives failures
-- ✅ **Parallel I/O**: All nodes can read/write simultaneously  
+- ✅ **Parallel I/O**: All nodes can read/write simultaneously
 - ✅ **Full Resource Utilization**: All 3 nodes store and process data
 - ✅ **Distributed Processing**: Engines process data where it lives
 

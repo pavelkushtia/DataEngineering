@@ -1,0 +1,23 @@
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "flink_iceberg_common",
+    srcs = ["flink_iceberg_common.py"],
+    deps = [],
+)
+
+py_binary(
+    name = "kafka_to_iceberg_streaming",
+    srcs = ["kafka_to_iceberg_streaming.py"],
+    deps = [
+        ":flink_iceberg_common",
+    ],
+)
+
+py_binary(
+    name = "iceberg_streaming_analytics",
+    srcs = ["iceberg_streaming_analytics.py"],
+    deps = [
+        ":flink_iceberg_common",
+    ],
+)

@@ -141,10 +141,33 @@ sequenceDiagram
 
 ## Phase 1: Core Distributed Setup
 
-### Step 1: Update Delta Lake for HDFS Storage
+### 📋 Quick Node Reference Summary
+
+**Primary Setup Node**: All initial setup and master services run on `cpu-node1 (192.168.1.184)`
+**Distribution**: Flink JARs must be copied to worker nodes `cpu-node2 (192.168.1.185)` and `worker-node3 (192.168.1.186)`
+**Python Dependencies**: Install on ALL nodes for distributed analytics
+
+| Component | Node(s) | Purpose |
+|-----------|---------|---------|
+| Delta Lake Workspace | cpu-node1 | Main setup and configuration files |
+| Spark Master | cpu-node1 | Spark Delta Lake processing |
+| Trino Coordinator | cpu-node1 | SQL queries and Delta Lake connector |
+| Hive Metastore | cpu-node1 | Table metadata and schema management |
+| Flink JobManager | cpu-node1 | Stream processing coordination |
+| Flink TaskManager JARs | cpu-node2, worker-node3 | Distributed stream processing |
+| Python Analytics | ALL nodes | Distributed analytics capabilities |
+
+---
+
+### Step 1: Setup Delta Lake Workspace and Dependencies
+
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create the main Delta Lake workspace directory structure:
 
 ```bash
-# Create new distributed workspace
+# Create new distributed workspace on master node (cpu-node1)
+ssh sanzad@192.168.1.184
 mkdir -p /home/sanzad/deltalake-distributed
 cd /home/sanzad/deltalake-distributed
 
@@ -157,8 +180,10 @@ mkdir -p logs
 mkdir -p checkpoints
 ```
 
-### Download enhanced JAR files:
+Download all required JAR files to the master node:
+
 ```bash
+# Ensure you're on cpu-node1 and in the correct directory
 cd /home/sanzad/deltalake-distributed/libs
 
 # Core Delta Lake JARs
@@ -180,7 +205,12 @@ wget https://repo1.maven.org/maven2/org/antlr/antlr4-runtime/4.8/antlr4-runtime-
 
 ### Step 2: Distributed Spark Configuration
 
+#### 🖥️ **CONTINUE ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create Spark configuration file for Delta Lake:
+
 ```bash
+# Still on cpu-node1, create Spark configuration
 nano /home/sanzad/deltalake-distributed/conf/spark-delta-distributed.conf
 ```
 
@@ -225,8 +255,12 @@ spark.hadoop.dfs.client.use.datanode.hostname=false
 spark.hadoop.dfs.client.cache.drop.behind.reads=true
 ```
 
-### Create distributed launch script:
+#### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create distributed Spark launch script:
+
 ```bash
+# Still on cpu-node1, create Spark launch script
 nano /home/sanzad/deltalake-distributed/start-spark-delta-distributed.sh
 ```
 
@@ -270,8 +304,12 @@ $SPARK_HOME/bin/spark-shell \
     --total-executor-cores 6
 ```
 
-### Create PySpark distributed launch script:
+#### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create PySpark distributed launch script:
+
 ```bash
+# Still on cpu-node1, create PySpark launch script
 nano /home/sanzad/deltalake-distributed/start-pyspark-delta-distributed.sh
 ```
 
@@ -306,15 +344,22 @@ $SPARK_HOME/bin/pyspark \
     --conf "spark.databricks.delta.retentionDurationCheck.enabled=false"
 ```
 
+Make scripts executable (still on cpu-node1):
+
 ```bash
+# Still on cpu-node1, make scripts executable
 chmod +x /home/sanzad/deltalake-distributed/start-spark-delta-distributed.sh
 chmod +x /home/sanzad/deltalake-distributed/start-pyspark-delta-distributed.sh
 ```
 
 ### Step 3: Test Distributed Setup
 
+#### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
+
+Start distributed Spark session to test the setup:
+
 ```bash
-# Start distributed Spark session (run as spark user)
+# On cpu-node1, start distributed Spark session (run as spark user)
 sudo su - spark -c "cd /home/sanzad/deltalake-distributed && ./start-spark-delta-distributed.sh"
 ```
 
@@ -368,6 +413,8 @@ deltaTable.detail().show(false)
 ## Phase 2: Trino Integration with Hive Metastore
 
 ### Step 4: Configure Trino for Delta Lake with Hive Metastore
+
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
 
 **🚨 CRITICAL:** Trino's Delta Lake connector **requires** Hive Metastore for table discovery and metadata management.
 
@@ -424,8 +471,9 @@ graph LR
 ```
 
 #### Create Enhanced Trino Delta Catalog:
+
 ```bash
-# Create comprehensive delta.properties with Hive Metastore integration
+# On cpu-node1, create comprehensive delta.properties with Hive Metastore integration
 sudo tee /home/trino/trino/etc/catalog/delta.properties > /dev/null << 'EOF'
 connector.name=delta-lake
 
@@ -463,13 +511,18 @@ delta.register-table-procedure.enabled=true
 delta.auto-register-table.enabled=false
 EOF
 
-# Restart Trino to apply new configuration
+# Restart Trino service on cpu-node1 to apply new configuration
 sudo systemctl restart trino
 ```
 
-### Test Trino integration:
+### Test Trino Integration
+
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
+
+Connect to Trino and test the Delta Lake integration:
+
 ```bash
-# Connect to Trino
+# On cpu-node1, connect to local Trino instance
 trino --server http://192.168.1.184:8080 --catalog delta --schema default
 ```
 
@@ -561,12 +614,16 @@ flowchart LR
 
 ### Step 5: Configure Flink for Delta Lake Streaming
 
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node (JobManager)**
+
+Configure Flink JobManager for Delta Lake streaming:
+
 ```bash
-# Copy Delta Lake Flink JAR to Flink lib directory
+# On cpu-node1, copy Delta Lake Flink JARs to Flink lib directory
 sudo cp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar /home/flink/flink/lib/
 sudo cp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar /home/flink/flink/lib/
 
-# Update Flink configuration for Delta Lake
+# Update Flink configuration for Delta Lake on cpu-node1
 sudo nano /home/flink/flink/conf/flink-conf.yaml
 ```
 
@@ -579,8 +636,45 @@ fs.hdfs.hadoop.conf.dir: /opt/hadoop/current/etc/hadoop
 table.sql-dialect: default
 ```
 
-### Create Flink streaming to Delta Lake script:
+#### 📋 **DISTRIBUTE JARS TO WORKER NODES**
+
+Copy the same Delta Lake JARs to all Flink TaskManager nodes:
+
 ```bash
+# Copy JARs to cpu-node2 (TaskManager)
+ssh sanzad@192.168.1.185 "sudo mkdir -p /tmp/flink-jars"
+scp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar sanzad@192.168.1.185:/tmp/flink-jars/
+scp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar sanzad@192.168.1.185:/tmp/flink-jars/
+ssh sanzad@192.168.1.185 "sudo mv /tmp/flink-jars/*.jar /home/flink/flink/lib/ && sudo chown flink:flink /home/flink/flink/lib/*.jar"
+
+# Copy JARs to worker-node3 (TaskManager)
+ssh sanzad@192.168.1.186 "sudo mkdir -p /tmp/flink-jars"
+scp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar sanzad@192.168.1.186:/tmp/flink-jars/
+scp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar sanzad@192.168.1.186:/tmp/flink-jars/
+ssh sanzad@192.168.1.186 "sudo mv /tmp/flink-jars/*.jar /home/flink/flink/lib/ && sudo chown flink:flink /home/flink/flink/lib/*.jar"
+```
+
+Restart Flink cluster to load new JARs:
+
+```bash
+# On cpu-node1, restart Flink cluster
+sudo systemctl restart flink-jobmanager
+
+# On cpu-node2, restart TaskManager
+ssh sanzad@192.168.1.185 "sudo systemctl restart flink-taskmanager"
+
+# On worker-node3, restart TaskManager  
+ssh sanzad@192.168.1.186 "sudo systemctl restart flink-taskmanager"
+```
+
+### Create Flink Streaming to Delta Lake Script
+
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create the Flink streaming script:
+
+```bash
+# On cpu-node1, create Flink streaming script
 nano /home/sanzad/deltalake-distributed/scripts/flink_kafka_to_delta.py
 ```
 
@@ -718,13 +812,30 @@ graph TB
 
 ### Step 6: Enhanced Python Setup with delta-rs
 
+#### 🖥️ **ON ALL NODES (192.168.1.184, 192.168.1.185, 192.168.1.186)**
+
+Install Python dependencies on all nodes for distributed analytics:
+
 ```bash
-# Install delta-rs and additional dependencies
+# Run this command on ALL nodes (cpu-node1, cpu-node2, worker-node3)
+# On cpu-node1:
 pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy
+
+# On cpu-node2:
+ssh sanzad@192.168.1.185 "pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy"
+
+# On worker-node3:
+ssh sanzad@192.168.1.186 "pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy"
 ```
 
-### Create comprehensive Python analytics script:
+### Create Comprehensive Python Analytics Script
+
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create the Python analytics script:
+
 ```bash
+# On cpu-node1, create Python analytics script
 nano /home/sanzad/deltalake-distributed/scripts/python_analytics_comprehensive.py
 ```
 
@@ -1131,7 +1242,12 @@ sequenceDiagram
 
 ### Step 7: Multi-Engine Coordination for Delta Lake
 
+#### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
+
+Create the multi-engine coordination script:
+
 ```bash
+# On cpu-node1, create multi-engine coordination script
 nano /home/sanzad/deltalake-distributed/scripts/multi_engine_coordination.py
 ```
 
@@ -1487,7 +1603,10 @@ if __name__ == "__main__":
     main()
 ```
 
+Make all scripts executable:
+
 ```bash
+# On cpu-node1, make all scripts executable
 chmod +x /home/sanzad/deltalake-distributed/scripts/*.py
 ```
 
