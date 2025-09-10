@@ -189,9 +189,9 @@ Download all required JAR files to the master node:
 cd /home/sanzad/deltalake-distributed/libs
 
 # Core Delta Lake JARs
-# Download Delta Lake 3.0.0 (compatible with Spark 3.5.x)
-wget https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.0.0/delta-spark_2.12-3.0.0.jar
-wget https://repo1.maven.org/maven2/io/delta/delta-storage/3.0.0/delta-storage-3.0.0.jar
+# Download Delta Lake 3.3.2 (compatible with Spark 3.5.x)
+wget https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.3.2/delta-spark_2.12-3.3.2.jar
+wget https://repo1.maven.org/maven2/io/delta/delta-storage/3.3.2/delta-storage-3.3.2.jar
 
 # Delta Lake Flink connector
 wget https://repo1.maven.org/maven2/io/delta/delta-flink/3.3.2/delta-flink-3.3.2.jar
@@ -203,7 +203,7 @@ wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-client/3.3.6/hadoop
 wget https://jdbc.postgresql.org/download/postgresql-42.7.2.jar
 
 # Additional dependencies
-wget https://repo1.maven.org/maven2/org/antlr/antlr4-runtime/4.8/antlr4-runtime-4.8.jar
+# antlr4-runtime not needed - Spark includes its own version
 ```
 
 ### Step 2: Distributed Spark Configuration
@@ -278,12 +278,11 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 
 # Build classpath with all required JARs
-DELTA_JARS="${DELTA_HOME}/libs/delta-spark_2.12-3.0.0.jar,${DELTA_HOME}/libs/delta-storage-3.0.0.jar"
+DELTA_JARS="${DELTA_HOME}/libs/delta-spark_2.12-3.3.2.jar,${DELTA_HOME}/libs/delta-storage-3.3.2.jar"
 HADOOP_JARS="${DELTA_HOME}/libs/hadoop-client-3.3.6.jar"
 POSTGRES_JAR="${DELTA_HOME}/libs/postgresql-42.7.2.jar"
-ANTLR_JAR="${DELTA_HOME}/libs/antlr4-runtime-4.8.jar"
 
-ALL_JARS="${DELTA_JARS},${HADOOP_JARS},${POSTGRES_JAR},${ANTLR_JAR}"
+ALL_JARS="${DELTA_JARS},${HADOOP_JARS},${POSTGRES_JAR}"
 
 echo "Starting Spark with distributed Delta Lake..."
 echo "HDFS Warehouse: hdfs://192.168.1.184:9000/lakehouse/delta-lake"
@@ -328,7 +327,7 @@ export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 export PYSPARK_PYTHON=python3
 
 # Build classpath
-DELTA_JARS="${DELTA_HOME}/libs/delta-spark_2.12-3.0.0.jar,${DELTA_HOME}/libs/delta-storage-3.0.0.jar"
+DELTA_JARS="${DELTA_HOME}/libs/delta-spark_2.12-3.3.2.jar,${DELTA_HOME}/libs/delta-storage-3.3.2.jar"
 HADOOP_JARS="${DELTA_HOME}/libs/hadoop-client-3.3.6.jar"
 POSTGRES_JAR="${DELTA_HOME}/libs/postgresql-42.7.2.jar"
 
@@ -403,17 +402,74 @@ systemctl is-active spark-master spark-worker
 /opt/hadoop/current/bin/hdfs dfs -ls /lakehouse/
 ```
 
+### Step 2.1: Fix Permissions & JAR Synchronization
+
+#### 🔧 **CRITICAL: Fix Directory Permissions**
+
+```bash
+# Fix metastore_db permission issues
+sudo chown -R sanzad:spark /home/sanzad/deltalake-distributed
+chmod -R 775 /home/sanzad/deltalake-distributed
+
+# Alternative: Create dedicated workspace for spark user
+sudo mkdir -p /home/spark/workspace
+sudo chown spark:spark /home/spark/workspace
+```
+
+#### 🔄 **CRITICAL: Synchronize JARs Across All Worker Nodes**
+
+**First, check if worker nodes already have the correct JARs** (if you followed the Spark cluster setup guide):
+
+```bash
+# Check what Delta JARs exist on worker nodes
+ssh 192.168.1.187 "ls /home/spark/spark/jars/ | grep delta" 2>/dev/null || echo "No delta JARs on worker 1"
+ssh 192.168.1.190 "ls /home/spark/spark/jars/ | grep delta" 2>/dev/null || echo "No delta JARs on worker 2"
+```
+
+**If they show `delta-spark_2.12-3.3.2.jar` and `delta-storage-3.3.2.jar`, you're good!**
+
+**If not, or if you see old versions** (`3.1.0`, `3.0.0`, `2.4.0`), then synchronize:
+
+```bash
+# Copy Delta Lake JARs to all worker nodes
+scp /home/sanzad/deltalake-distributed/libs/delta-spark_2.12-3.3.2.jar 192.168.1.187:/tmp/
+scp /home/sanzad/deltalake-distributed/libs/delta-storage-3.3.2.jar 192.168.1.187:/tmp/
+scp /home/sanzad/deltalake-distributed/libs/delta-spark_2.12-3.3.2.jar 192.168.1.190:/tmp/
+scp /home/sanzad/deltalake-distributed/libs/delta-storage-3.3.2.jar 192.168.1.190:/tmp/
+
+# Install JARs on worker nodes
+ssh 192.168.1.187 "sudo mv /tmp/delta-*.jar /home/spark/spark/jars/"
+ssh 192.168.1.190 "sudo mv /tmp/delta-*.jar /home/spark/spark/jars/"
+
+# Remove any conflicting old Delta Lake JARs from ALL nodes
+ssh 192.168.1.187 "sudo rm -f /home/spark/spark/jars/delta-core_2.12-*.jar"
+ssh 192.168.1.190 "sudo rm -f /home/spark/spark/jars/delta-core_2.12-*.jar"
+sudo rm -f /home/spark/spark/jars/delta-core_2.12-*.jar
+```
+
 ### Step 3: Test Distributed Setup
 
 #### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
 
-**🚨 COMPATIBILITY NOTE**: For Spark 3.5.x, use Delta Lake 3.0.0+. If you get `DecimalIsFractional` errors, use the packages approach:
+**🚨 COMPATIBILITY MATRIX & TROUBLESHOOTING**:
+
+- **Spark 3.5.x** → **Delta Lake 3.3.2** ✅ *(Tested & Verified)*
+- **Spark 3.4.x** → **Delta Lake 3.0.0** ✅
+- **Spark 3.3.x** → **Delta Lake 2.4.0** ✅
+
+**⚠️ Common Issues & Fixes:**
+- `DecimalIsFractional` error → Use `Double` instead of `BigDecimal` in Scala
+- `NoSuchMethodError` → Wrong Delta Lake version for your Spark version
+- `Stream '/jars/delta-*.jar' not found` → JAR synchronization issue across cluster
+- `Directory metastore_db cannot be created` → Permission issue
+
+If you get compatibility errors, use the packages approach:
 
 ```bash
 # Alternative: Use packages instead of JARs for automatic compatibility
 $SPARK_HOME/bin/spark-shell \
     --master spark://192.168.1.184:7077 \
-    --packages io.delta:delta-spark_2.12:3.0.0 \
+    --packages io.delta:delta-spark_2.12:3.3.2 \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
     --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
     --conf "spark.hadoop.fs.defaultFS=hdfs://192.168.1.184:9000" \
@@ -445,11 +501,12 @@ val salesData = (1 to 50000).map { i =>
   val region = regions(i % regions.length)
   val product = products(i % products.length)
   val quantity = scala.util.Random.nextInt(10) + 1
-  val price = Math.round((scala.util.Random.nextDouble() * 1000 + 50) * 100.0) / 100.0  // Use Double for compatibility
+  // FIXED: Use Double instead of BigDecimal to avoid compatibility issues
+  val price = Math.round((scala.util.Random.nextDouble() * 1000 + 50) * 100.0) / 100.0
   val month = (i % 12) + 1
   val day = (i % 28) + 1
   val saleDate = java.sql.Date.valueOf(f"2024-$month%02d-$day%02d")
-  
+
   (i.toLong, product, quantity, price, region, saleDate, 2024, month)
 }
 
@@ -1737,13 +1794,13 @@ cd /home/sanzad/deltalake-local
 mkdir -p libs
 
 # Download Delta Lake core for Spark
-wget -P libs https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar
+wget -P libs https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.3.2/delta-spark_2.12-3.3.2.jar
 
 # Download Delta Lake storage
-wget -P libs https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar
+wget -P libs https://repo1.maven.org/maven2/io/delta/delta-storage/3.3.2/delta-storage-3.3.2.jar
 
 # Download additional dependencies (if needed)
-wget -P libs https://repo1.maven.org/maven2/org/antlr/antlr4-runtime/4.8/antlr4-runtime-4.8.jar
+# antlr4-runtime not needed - Spark includes its own version
 ```
 
 ## Step 3: Configure Spark for Delta Lake
@@ -1795,7 +1852,7 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 
 # Start Spark with Delta Lake
 $SPARK_HOME/bin/spark-shell \
-    --packages io.delta:delta-core_2.12:2.4.0 \
+    --packages io.delta:delta-spark_2.12:3.3.2 \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
     --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
     --conf "spark.sql.adaptive.enabled=true" \
@@ -1821,7 +1878,7 @@ export PYSPARK_PYTHON=python3
 
 # Start PySpark with Delta Lake
 $SPARK_HOME/bin/pyspark \
-    --packages io.delta:delta-core_2.12:2.4.0 \
+    --packages io.delta:delta-spark_2.12:3.3.2 \
     --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
     --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
     --conf "spark.sql.adaptive.enabled=true" \
@@ -1835,6 +1892,86 @@ chmod +x /home/sanzad/deltalake-local/start-pyspark-delta.sh
 ```
 
 For the complete local setup guide including basic operations, advanced features, Python integration, streaming examples, Jupyter setup, testing, performance optimization, data quality framework, and maintenance, see the full content in the original `07_deltalake_local_setup.md` file.
+
+## 🚨 **TROUBLESHOOTING GUIDE**
+
+### Common Issues & Solutions
+
+#### 1. **`DecimalIsFractional` Error**
+```
+error while loading Decimal, class file is broken
+assertion failed: Decimal$DecimalIsFractional
+```
+**Fix**: Use `Double` instead of `BigDecimal` in Scala code:
+```scala
+// ❌ WRONG: Causes compatibility issues
+val price = BigDecimal((scala.util.Random.nextDouble() * 1000 + 50).round / 100.0)
+
+// ✅ CORRECT: Use Double
+val price = Math.round((scala.util.Random.nextDouble() * 1000 + 50) * 100.0) / 100.0
+```
+
+#### 2. **JAR Not Found on Worker Nodes**
+```
+ERROR TaskSchedulerImpl: Lost executor due to Stream '/jars/delta-spark_2.12-3.1.0.jar' was not found
+```
+**Fix**: Synchronize JARs across all worker nodes:
+```bash
+# Copy to ALL worker nodes
+for worker in 192.168.1.187 192.168.1.190; do
+  scp /home/sanzad/deltalake-distributed/libs/delta-spark_2.12-3.3.2.jar $worker:/tmp/
+  scp /home/sanzad/deltalake-distributed/libs/delta-storage-3.3.2.jar $worker:/tmp/
+  ssh $worker "sudo mv /tmp/delta-*.jar /home/spark/spark/jars/"
+done
+```
+
+#### 3. **Permission Denied: metastore_db**
+```
+ERROR XBM0H: Directory /home/sanzad/deltalake-distributed/metastore_db cannot be created
+```
+**Fix**: Set proper permissions:
+```bash
+sudo chown -R sanzad:spark /home/sanzad/deltalake-distributed
+chmod -R 775 /home/sanzad/deltalake-distributed
+```
+
+#### 4. **Version Compatibility Issues**
+```
+NoSuchMethodError: StructType.toAttributes()
+```
+**Fix**: Use correct Delta Lake version for your Spark version:
+- Spark 3.5.x → Delta Lake 3.3.2
+- Spark 3.4.x → Delta Lake 3.0.0  
+- Spark 3.3.x → Delta Lake 2.4.0
+
+#### 5. **String.format Compilation Error**
+```
+cannot be applied to (String, Int)
+```
+**Fix**: Use Scala f-string interpolation:
+```scala
+// ❌ WRONG: Java String.format with Scala Int
+val date = s"2024-${String.format("%02d", month)}"
+
+// ✅ CORRECT: Scala f-string interpolation
+val date = f"2024-$month%02d"
+```
+
+### Verification Commands
+
+```bash
+# Check JAR versions on all nodes
+for node in 192.168.1.184 192.168.1.187 192.168.1.190; do
+  echo "=== $node ==="
+  ssh $node "ls -la /home/spark/spark/jars/delta-*"
+done
+
+# Check permissions
+ls -la /home/sanzad/deltalake-distributed/
+
+# Test cluster connectivity
+spark-shell --master spark://192.168.1.184:7077 --conf "spark.sql.shuffle.partitions=4"
+```
 
 ## Integration with Cluster Components
 

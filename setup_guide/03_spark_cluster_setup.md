@@ -443,8 +443,9 @@ wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3
 wget https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.0/kafka-clients-3.4.0.jar
 
 # Delta Lake (REQUIRED - fixes ClassNotFoundException)
-wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar
-wget https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar
+# Updated to 3.3.2 for Spark 3.5.x compatibility
+wget https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.3.2/delta-spark_2.12-3.3.2.jar
+wget https://repo1.maven.org/maven2/io/delta/delta-storage/3.3.2/delta-storage-3.3.2.jar
 
 # Iceberg
 wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.4.3/iceberg-spark-runtime-3.5_2.12-1.4.3.jar
@@ -618,10 +619,10 @@ The Spark configuration includes Delta Lake extensions in `spark-defaults.conf`,
 # 1. Switch to spark user
 sudo su - spark
 
-# 2. Download Delta Lake JARs
+# 2. Download Delta Lake JARs (Updated for Spark 3.5.x compatibility)
 cd $SPARK_HOME/jars-ext
-wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar
-wget https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar
+wget https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.3.2/delta-spark_2.12-3.3.2.jar
+wget https://repo1.maven.org/maven2/io/delta/delta-storage/3.3.2/delta-storage-3.3.2.jar
 
 # 3. Copy to Spark jars directory
 cp *.jar $SPARK_HOME/jars/
