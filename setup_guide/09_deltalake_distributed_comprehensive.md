@@ -597,8 +597,8 @@ graph LR
 #### Create Enhanced Trino Delta Catalog:
 
 ```bash
-# On cpu-node1, create comprehensive delta.properties with Hive Metastore integration
-sudo tee /home/trino/trino/etc/catalog/delta.properties > /dev/null << 'EOF'
+# On cpu-node1, create Trino 435 compatible delta.properties with Hive Metastore integration
+sudo tee /home/trino/trino-server/etc/catalog/delta.properties > /dev/null << 'EOF'
 connector.name=delta-lake
 
 # ===== HIVE METASTORE INTEGRATION (CRITICAL) =====
@@ -609,21 +609,10 @@ hive.metastore.username=hive
 hive.hdfs.authentication.type=NONE
 hive.hdfs.impersonation.enabled=false
 
-# Delta Lake warehouse location (must match Spark config)
-delta.default.warehouse.path=hdfs://192.168.1.184:9000/lakehouse/delta-lake
-
-# ===== PERFORMANCE OPTIMIZATIONS =====
+# ===== BASIC PERFORMANCE OPTIMIZATIONS (Trino 435 Compatible) =====
 delta.enable-non-concurrent-writes=true
-delta.max-partitions-per-query=1000
 delta.table-statistics-enabled=true
-delta.collect-extended-statistics-on-write=true
 delta.vacuum.min-retention=168h
-delta.checkpoint.interval=10
-
-# Query optimization features
-delta.checkpoint-filtering.enabled=true
-delta.dynamic-filtering.enabled=true
-delta.projection-pushdown.enabled=true
 
 # Performance settings for distributed workloads
 delta.compression-codec=ZSTD
@@ -632,8 +621,17 @@ delta.domain-compaction-threshold=1000
 
 # Multi-engine coordination settings
 delta.register-table-procedure.enabled=true
-delta.auto-register-table.enabled=false
 EOF
+
+# ⚠️ IMPORTANT: Properties removed for Trino 435 compatibility:
+# - delta.default.warehouse.path (not supported)
+# - delta.max-partitions-per-query (not supported)
+# - delta.collect-extended-statistics-on-write (not supported) 
+# - delta.checkpoint.interval (not supported)
+# - delta.checkpoint-filtering.enabled (not supported)
+# - delta.dynamic-filtering.enabled (not supported)
+# - delta.projection-pushdown.enabled (not supported)
+# - delta.auto-register-table.enabled (not supported)
 
 # Restart Trino service on cpu-node1 to apply new configuration
 sudo systemctl restart trino
@@ -643,11 +641,15 @@ sudo systemctl restart trino
 
 #### 🖥️ **ON cpu-node1 (192.168.1.184) - Master Node**
 
+**⚠️ IMPORTANT PORT NOTE:** 
+- **Spark Master UI**: http://192.168.1.184:8080
+- **Trino Coordinator**: http://192.168.1.184:8084 
+
 Connect to Trino and test the Delta Lake integration:
 
 ```bash
-# On cpu-node1, connect to local Trino instance
-trino --server http://192.168.1.184:8080 --catalog delta --schema default
+# On cpu-node1, connect to local Trino instance (port 8084 for Trino coordinator)
+trino --server http://192.168.1.184:8084 --catalog delta --schema default
 ```
 
 ```sql

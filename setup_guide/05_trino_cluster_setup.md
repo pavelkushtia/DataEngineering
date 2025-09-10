@@ -339,10 +339,11 @@ nano /home/trino/trino/etc/catalog/delta.properties
 ```
 
 ```properties
-connector.name=delta_lake
+connector.name=delta-lake
 hive.metastore.uri=thrift://192.168.1.184:9083
 delta.enable-non-concurrent-writes=true
 # Note: Advanced Delta properties may not be available in Trino 435
+# For complete list of compatible properties, see 09_deltalake_distributed_comprehensive.md
 ```
 
 ### Copy catalog configurations to workers:
