@@ -83,13 +83,13 @@ graph LR
         HD1[HDFS NameNode]
     end
     
-    subgraph "cpu-node2 (192.168.1.185)"
+    subgraph "worker-node2 (192.168.1.187)"
         S2[Spark Worker]
         F2[Flink TaskManager]
         HD2[HDFS DataNode]
     end
     
-    subgraph "worker-node3 (192.168.1.186)"
+    subgraph "worker-node3 (192.168.1.190)"
         S3[Spark Worker]
         F3[Flink TaskManager]
         HD3[HDFS DataNode]
@@ -144,8 +144,10 @@ sequenceDiagram
 ### 📋 Quick Node Reference Summary
 
 **Primary Setup Node**: All initial setup and master services run on `cpu-node1 (192.168.1.184)`
-**Distribution**: Flink JARs must be copied to worker nodes `cpu-node2 (192.168.1.185)` and `worker-node3 (192.168.1.186)`
+**Distribution**: Flink JARs must be copied to worker nodes `(192.168.1.187)` and `(192.168.1.190)`
 **Python Dependencies**: Install on ALL nodes for distributed analytics
+
+> **⚠️ Important**: Verify your actual worker node IP addresses by checking `curl -s http://192.168.1.184:8080 | grep worker` before proceeding. The worker nodes shown here are based on active Spark cluster discovery.
 
 | Component | Node(s) | Purpose |
 |-----------|---------|---------|
@@ -154,7 +156,7 @@ sequenceDiagram
 | Trino Coordinator | cpu-node1 | SQL queries and Delta Lake connector |
 | Hive Metastore | cpu-node1 | Table metadata and schema management |
 | Flink JobManager | cpu-node1 | Stream processing coordination |
-| Flink TaskManager JARs | cpu-node2, worker-node3 | Distributed stream processing |
+| Flink TaskManager JARs | 192.168.1.187, 192.168.1.190 | Distributed stream processing |
 | Python Analytics | ALL nodes | Distributed analytics capabilities |
 
 ---
@@ -248,7 +250,7 @@ spark.databricks.delta.optimize.minFileSize=8388608
 # Checkpoint and streaming settings
 spark.sql.streaming.checkpointLocation=hdfs://192.168.1.184:9000/lakehouse/checkpoints
 spark.eventLog.enabled=true
-spark.eventLog.dir=hdfs://192.168.1.184:9000/spark-logs
+spark.eventLog.dir=hdfs://192.168.1.184:9000/lakehouse/spark/event-logs
 
 # HDFS client settings
 spark.hadoop.dfs.client.use.datanode.hostname=false
@@ -295,7 +297,7 @@ $SPARK_HOME/bin/spark-shell \
     --conf "spark.sql.warehouse.dir=hdfs://192.168.1.184:9000/lakehouse/delta-lake" \
     --conf "spark.databricks.delta.retentionDurationCheck.enabled=false" \
     --conf "spark.sql.streaming.checkpointLocation=hdfs://192.168.1.184:9000/lakehouse/checkpoints" \
-    --conf "spark.eventLog.dir=hdfs://192.168.1.184:9000/spark-logs" \
+    --conf "spark.eventLog.dir=hdfs://192.168.1.184:9000/lakehouse/spark/event-logs" \
     --conf "spark.sql.adaptive.enabled=true" \
     --conf "spark.sql.shuffle.partitions=12" \
     --executor-memory 2g \
@@ -352,6 +354,54 @@ chmod +x /home/sanzad/deltalake-distributed/start-spark-delta-distributed.sh
 chmod +x /home/sanzad/deltalake-distributed/start-pyspark-delta-distributed.sh
 ```
 
+### Step 2.5: Prepare HDFS Directories and Services
+
+#### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
+
+Before testing the Delta Lake setup, we need to create required HDFS directories and ensure all Spark services are running:
+
+**Create Required HDFS Directories:**
+
+```bash
+# Create missing HDFS directories for Delta Lake operations
+/opt/hadoop/current/bin/hdfs dfs -mkdir -p /lakehouse/checkpoints
+/opt/hadoop/current/bin/hdfs dfs -mkdir -p /lakehouse/spark/event-logs
+
+# Set proper permissions for multi-user access
+/opt/hadoop/current/bin/hdfs dfs -chmod 777 /lakehouse/checkpoints
+/opt/hadoop/current/bin/hdfs dfs -chmod 777 /lakehouse/spark/event-logs
+```
+
+**Fix Event Log Directory Configuration:**
+
+The Spark History Server uses `/lakehouse/spark/event-logs` but our script was configured for `/spark-logs`. Fix this:
+
+```bash
+# Update the Spark Delta script to use correct event log directory  
+sed -i 's|spark.eventLog.dir=hdfs://192.168.1.184:9000/spark-logs|spark.eventLog.dir=hdfs://192.168.1.184:9000/lakehouse/spark/event-logs|g' /home/sanzad/deltalake-distributed/start-spark-delta-distributed.sh
+```
+
+**Ensure Spark Cluster is Running:**
+
+```bash
+# Start and enable Spark Worker service (if not running)
+sudo systemctl start spark-worker
+sudo systemctl enable spark-worker
+
+# Verify all Spark services are active
+systemctl is-active spark-master spark-worker
+```
+
+**Verify HDFS Directory Creation:**
+
+```bash
+# Verify directories were created successfully
+/opt/hadoop/current/bin/hdfs dfs -ls /lakehouse/checkpoints /lakehouse/spark/event-logs
+
+# Check overall lakehouse structure
+/opt/hadoop/current/bin/hdfs dfs -ls /lakehouse/
+```
+
 ### Step 3: Test Distributed Setup
 
 #### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
@@ -381,9 +431,11 @@ val salesData = (1 to 50000).map { i =>
   val product = products(i % products.length)
   val quantity = scala.util.Random.nextInt(10) + 1
   val price = BigDecimal((scala.util.Random.nextDouble() * 1000 + 50).round / 100.0)
-  val saleDate = java.sql.Date.valueOf(s"2024-${String.format("%02d", (i % 12) + 1)}-${String.format("%02d", (i % 28) + 1)}")
+  val month = (i % 12) + 1
+  val day = (i % 28) + 1
+  val saleDate = java.sql.Date.valueOf(f"2024-$month%02d-$day%02d")
   
-  (i.toLong, product, quantity, price, region, saleDate, 2024, (i % 12) + 1)
+  (i.toLong, product, quantity, price, region, saleDate, 2024, month)
 }
 
 val salesDF = salesData.toDF("transaction_id", "product", "quantity", "price", "region", "sale_date", "year", "month")
@@ -641,17 +693,17 @@ table.sql-dialect: default
 Copy the same Delta Lake JARs to all Flink TaskManager nodes:
 
 ```bash
-# Copy JARs to cpu-node2 (TaskManager)
-ssh sanzad@192.168.1.185 "sudo mkdir -p /tmp/flink-jars"
-scp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar sanzad@192.168.1.185:/tmp/flink-jars/
-scp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar sanzad@192.168.1.185:/tmp/flink-jars/
-ssh sanzad@192.168.1.185 "sudo mv /tmp/flink-jars/*.jar /home/flink/flink/lib/ && sudo chown flink:flink /home/flink/flink/lib/*.jar"
+# Copy JARs to worker-node2 (TaskManager)
+ssh sanzad@192.168.1.187 "sudo mkdir -p /tmp/flink-jars"
+scp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar sanzad@192.168.1.187:/tmp/flink-jars/
+scp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar sanzad@192.168.1.187:/tmp/flink-jars/
+ssh sanzad@192.168.1.187 "sudo mv /tmp/flink-jars/*.jar /home/flink/flink/lib/ && sudo chown flink:flink /home/flink/flink/lib/*.jar"
 
 # Copy JARs to worker-node3 (TaskManager)
-ssh sanzad@192.168.1.186 "sudo mkdir -p /tmp/flink-jars"
-scp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar sanzad@192.168.1.186:/tmp/flink-jars/
-scp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar sanzad@192.168.1.186:/tmp/flink-jars/
-ssh sanzad@192.168.1.186 "sudo mv /tmp/flink-jars/*.jar /home/flink/flink/lib/ && sudo chown flink:flink /home/flink/flink/lib/*.jar"
+ssh sanzad@192.168.1.190 "sudo mkdir -p /tmp/flink-jars"
+scp /home/sanzad/deltalake-distributed/libs/delta-flink-3.3.2.jar sanzad@192.168.1.190:/tmp/flink-jars/
+scp /home/sanzad/deltalake-distributed/libs/hadoop-client-3.3.6.jar sanzad@192.168.1.190:/tmp/flink-jars/
+ssh sanzad@192.168.1.190 "sudo mv /tmp/flink-jars/*.jar /home/flink/flink/lib/ && sudo chown flink:flink /home/flink/flink/lib/*.jar"
 ```
 
 Restart Flink cluster to load new JARs:
@@ -660,11 +712,11 @@ Restart Flink cluster to load new JARs:
 # On cpu-node1, restart Flink cluster
 sudo systemctl restart flink-jobmanager
 
-# On cpu-node2, restart TaskManager
-ssh sanzad@192.168.1.185 "sudo systemctl restart flink-taskmanager"
+# On worker-node2, restart TaskManager
+ssh sanzad@192.168.1.187 "sudo systemctl restart flink-taskmanager"
 
 # On worker-node3, restart TaskManager  
-ssh sanzad@192.168.1.186 "sudo systemctl restart flink-taskmanager"
+ssh sanzad@192.168.1.190 "sudo systemctl restart flink-taskmanager"
 ```
 
 ### Create Flink Streaming to Delta Lake Script
@@ -812,20 +864,20 @@ graph TB
 
 ### Step 6: Enhanced Python Setup with delta-rs
 
-#### 🖥️ **ON ALL NODES (192.168.1.184, 192.168.1.185, 192.168.1.186)**
+#### 🖥️ **ON ALL NODES (192.168.1.184, 192.168.1.187, 192.168.1.190)**
 
 Install Python dependencies on all nodes for distributed analytics:
 
 ```bash
-# Run this command on ALL nodes (cpu-node1, cpu-node2, worker-node3)
+# Run this command on ALL nodes (cpu-node1, worker-node2, worker-node3)
 # On cpu-node1:
 pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy
 
-# On cpu-node2:
-ssh sanzad@192.168.1.185 "pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy"
+# On worker-node2:
+ssh sanzad@192.168.1.187 "pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy"
 
 # On worker-node3:
-ssh sanzad@192.168.1.186 "pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy"
+ssh sanzad@192.168.1.190 "pip3 install deltalake pandas pyarrow duckdb polars sqlalchemy"
 ```
 
 ### Create Comprehensive Python Analytics Script
