@@ -189,8 +189,9 @@ Download all required JAR files to the master node:
 cd /home/sanzad/deltalake-distributed/libs
 
 # Core Delta Lake JARs
-wget https://repo1.maven.org/maven2/io/delta/delta-core_2.12/2.4.0/delta-core_2.12-2.4.0.jar
-wget https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar
+# Download Delta Lake 3.0.0 (compatible with Spark 3.5.x)
+wget https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.0.0/delta-spark_2.12-3.0.0.jar
+wget https://repo1.maven.org/maven2/io/delta/delta-storage/3.0.0/delta-storage-3.0.0.jar
 
 # Delta Lake Flink connector
 wget https://repo1.maven.org/maven2/io/delta/delta-flink/3.3.2/delta-flink-3.3.2.jar
@@ -277,7 +278,7 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 
 # Build classpath with all required JARs
-DELTA_JARS="${DELTA_HOME}/libs/delta-core_2.12-2.4.0.jar,${DELTA_HOME}/libs/delta-storage-2.4.0.jar"
+DELTA_JARS="${DELTA_HOME}/libs/delta-spark_2.12-3.0.0.jar,${DELTA_HOME}/libs/delta-storage-3.0.0.jar"
 HADOOP_JARS="${DELTA_HOME}/libs/hadoop-client-3.3.6.jar"
 POSTGRES_JAR="${DELTA_HOME}/libs/postgresql-42.7.2.jar"
 ANTLR_JAR="${DELTA_HOME}/libs/antlr4-runtime-4.8.jar"
@@ -327,7 +328,7 @@ export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 export PYSPARK_PYTHON=python3
 
 # Build classpath
-DELTA_JARS="${DELTA_HOME}/libs/delta-core_2.12-2.4.0.jar,${DELTA_HOME}/libs/delta-storage-2.4.0.jar"
+DELTA_JARS="${DELTA_HOME}/libs/delta-spark_2.12-3.0.0.jar,${DELTA_HOME}/libs/delta-storage-3.0.0.jar"
 HADOOP_JARS="${DELTA_HOME}/libs/hadoop-client-3.3.6.jar"
 POSTGRES_JAR="${DELTA_HOME}/libs/postgresql-42.7.2.jar"
 
@@ -406,6 +407,20 @@ systemctl is-active spark-master spark-worker
 
 #### 🖥️ **STILL ON cpu-node1 (192.168.1.184) - Master Node**
 
+**🚨 COMPATIBILITY NOTE**: For Spark 3.5.x, use Delta Lake 3.0.0+. If you get `DecimalIsFractional` errors, use the packages approach:
+
+```bash
+# Alternative: Use packages instead of JARs for automatic compatibility
+$SPARK_HOME/bin/spark-shell \
+    --master spark://192.168.1.184:7077 \
+    --packages io.delta:delta-spark_2.12:3.0.0 \
+    --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \
+    --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \
+    --conf "spark.hadoop.fs.defaultFS=hdfs://192.168.1.184:9000" \
+    --conf "spark.sql.warehouse.dir=hdfs://192.168.1.184:9000/lakehouse/delta-lake" \
+    --conf "spark.databricks.delta.retentionDurationCheck.enabled=false"
+```
+
 Start distributed Spark session to test the setup:
 
 ```bash
@@ -430,7 +445,7 @@ val salesData = (1 to 50000).map { i =>
   val region = regions(i % regions.length)
   val product = products(i % products.length)
   val quantity = scala.util.Random.nextInt(10) + 1
-  val price = BigDecimal((scala.util.Random.nextDouble() * 1000 + 50).round / 100.0)
+  val price = Math.round((scala.util.Random.nextDouble() * 1000 + 50) * 100.0) / 100.0  // Use Double for compatibility
   val month = (i % 12) + 1
   val day = (i % 28) + 1
   val saleDate = java.sql.Date.valueOf(f"2024-$month%02d-$day%02d")
