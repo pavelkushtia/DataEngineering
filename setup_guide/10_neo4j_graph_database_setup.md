@@ -67,108 +67,270 @@ sudo nano /etc/neo4j/neo4j.conf
 ```
 
 ```properties
+# The name of the default database
+initial.dbms.default_database=neo4j
+
+# Paths of directories in the installation.
+server.directories.data=/var/lib/neo4j/data
+server.directories.plugins=/var/lib/neo4j/plugins
+server.directories.logs=/var/log/neo4j
+server.directories.lib=/usr/share/neo4j/lib
+#server.directories.run=run
+#server.directories.licenses=licenses
+#server.directories.transaction.logs.root=data/transactions
+server.logs.config=/etc/neo4j/server-logs.xml
+server.logs.user.config=/etc/neo4j/user-logs.xml
+
+# This setting constrains all `LOAD CSV` import files to be under the `import` directory. Remove or comment it out to
+# allow files to be loaded from anywhere in the filesystem; this introduces possible security problems. See the
+# `LOAD CSV` section of the manual for details.
+server.directories.import=/var/lib/neo4j/import
+
+# Whether requests to Neo4j are authenticated.
+# To disable authentication, uncomment this line
+dbms.security.auth_enabled=true
+
+# Anonymous usage data reporting
+# To disable, uncomment this line
+#dbms.usage_report.enabled=false
+
+#********************************************************************
+# Memory Settings
+#********************************************************************
+#
+# Memory settings are specified kibibytes with the 'k' suffix, mebibytes with
+# 'm' and gibibytes with 'g'.
+# If Neo4j is running on a dedicated server, then it is generally recommended
+# to leave about 2-4 gigabytes for the operating system, give the JVM enough
+# heap to hold all your transaction state and query context, and then leave the
+# rest for the page cache.
+
+# Java Heap Size: by default the Java heap size is dynamically calculated based
+# on available system resources. Uncomment these lines to set specific initial
+# and maximum heap size.
+server.memory.heap.initial_size=2G
+server.memory.heap.max_size=4G
+
+# The amount of memory to use for mapping the store files.
+# The default page cache memory assumes the machine is dedicated to running
+# Neo4j, and is heuristically set to 50% of RAM minus the Java heap size.
+server.memory.pagecache.size=2G
+
+# Limit the amount of memory that all of the running transaction can consume.
+# The default value is 70% of the heap size limit.
+#dbms.memory.transaction.total.max=256m
+
+# Limit the amount of memory that a single transaction can consume.
+# By default there is no limit.
+#db.memory.transaction.max=16m
+
 #*****************************************************************
 # Network connector configuration
 #*****************************************************************
 
+# With default configuration Neo4j only accepts local connections.
+# To accept non-local connections, uncomment this line:
+server.default_listen_address=0.0.0.0
+
+# You can also choose a specific network interface, and configure a non-default
+# port for each connector, by setting their individual listen_address.
+
+# The address at which this server can be reached by its clients. This may be the server's IP address or DNS name, or
+# it may be the address of a reverse proxy which sits in front of the server. This setting may be overridden for
+# individual connectors below.
+server.default_advertised_address=192.168.1.187
+
+# You can also choose a specific advertised hostname or IP address, and
+# configure an advertised port for each connector, by setting their
+# individual advertised_address.
+
+# By default, encryption is turned off.
+# To turn on encryption, an ssl policy for the connector needs to be configured
+# Read more in SSL policy section in this file for how to define a SSL policy.
+
 # Bolt connector
 server.bolt.enabled=true
+#server.bolt.tls_level=DISABLED
 server.bolt.listen_address=0.0.0.0:7687
 server.bolt.advertised_address=192.168.1.187:7687
 
-# HTTP connector
+# HTTP Connector. There can be zero or one HTTP connectors.
 server.http.enabled=true
 server.http.listen_address=0.0.0.0:7474
 server.http.advertised_address=192.168.1.187:7474
 
-# HTTPS connector (optional)
+# HTTPS Connector. There can be zero or one HTTPS connectors.
 server.https.enabled=false
 server.https.listen_address=0.0.0.0:7473
+#server.https.advertised_address=:7473
 
-#*****************************************************************
-# Memory settings
-#*****************************************************************
-
-# Java Heap Size
-server.memory.heap.initial_size=2G
-server.memory.heap.max_size=4G
-
-# Page cache size (should be ~50% of available RAM)
-server.memory.pagecache.size=2G
-
-#*****************************************************************
-# Database configuration
-#*****************************************************************
-
-# Default database
-server.default_database=neo4j
-
-# Enable multi-database
-server.databases.default_to_read_only=false
-
-#*****************************************************************
-# Security configuration
-#*****************************************************************
-
-# Authentication and authorization
-dbms.security.auth_enabled=true
-
-# Initial password (change after first login)
-dbms.security.auth_minimum_password_length=8
+# Number of Neo4j worker threads.
+#server.threads.worker_count=
 
 #*****************************************************************
 # Logging configuration
 #*****************************************************************
 
-# Query logging
-dbms.logs.query.enabled=true
-dbms.logs.query.threshold=1000ms
-dbms.logs.query.parameter_logging_enabled=true
+# To enable HTTP logging, uncomment this line
+#dbms.logs.http.enabled=true
 
-# Debug logging
-server.logs.debug.level=INFO
+# To enable GC Logging, uncomment this line
+#server.logs.gc.enabled=true
 
-#*****************************************************************
-# Performance tuning
-#*****************************************************************
+# GC Logging Options
+# see https://docs.oracle.com/en/java/javase/11/tools/java.html#GUID-BE93ABDC-999C-4CB5-A88B-1994AAAC74D5
+#server.logs.gc.options=-Xlog:gc*,safepoint,age*=trace
 
-# Transaction timeout
-dbms.transaction.timeout=60s
+# Number of GC logs to keep.
+#server.logs.gc.rotation.keep_number=5
 
-# Lock acquisition timeout
-dbms.lock.acquisition.timeout=60s
-
-# Maximum number of concurrent transactions
-dbms.transaction.concurrent.maximum=1000
+# Size of each GC log that is kept.
+#server.logs.gc.rotation.size=20m
 
 #*****************************************************************
-# Clustering (for future expansion)
+# Miscellaneous configuration
 #*****************************************************************
 
-# Uncomment for clustering setup
-# causal_clustering.minimum_core_cluster_size_at_formation=3
-# causal_clustering.initial_discovery_members=192.168.1.187:5000,192.168.1.190:5000
-# causal_clustering.discovery_listen_address=0.0.0.0:5000
-# causal_clustering.raft_listen_address=0.0.0.0:7000
-# causal_clustering.transaction_listen_address=0.0.0.0:6000
+# Determines if Cypher will allow using file URLs when loading data using
+# `LOAD CSV`. Setting this value to `false` will cause Neo4j to fail `LOAD CSV`
+# clauses that load data from the file system.
+#dbms.security.allow_csv_import_from_file_urls=true
 
-#*****************************************************************
-# Import configuration
-#*****************************************************************
+# Value of the Access-Control-Allow-Origin header sent over any HTTP or HTTPS
+# connector. This defaults to '*', which allows broadest compatibility. Note
+# that any URI provided here limits HTTP/HTTPS access to that URI only.
+#dbms.security.http_access_control_allow_origin=*
 
-# Allow file import from anywhere (use cautiously)
-dbms.security.allow_csv_import_from_file_urls=true
+# Value of the HTTP Strict-Transport-Security (HSTS) response header. This header
+# tells browsers that a webpage should only be accessed using HTTPS instead of HTTP.
+# It is attached to every HTTPS response. Setting is not set by default so
+# 'Strict-Transport-Security' header is not sent. Value is expected to contain
+# directives like 'max-age', 'includeSubDomains' and 'preload'.
+#dbms.security.http_strict_transport_security=
 
-# Import directory
-server.directories.import=/var/lib/neo4j/import
+# Retention policy for transaction logs needed to perform recovery and backups.
+db.tx_log.rotation.retention_policy=2 days 2G
 
-#*****************************************************************
-# APOC configuration
-#*****************************************************************
+# Whether or not any database on this instance are read_only by default.
+# If false, individual databases may be marked as read_only using dbms.database.read_only.
+# If true, individual databases may be marked as writable using dbms.databases.writable.
+dbms.databases.default_to_read_only=false
 
-# Enable APOC procedures
-dbms.security.procedures.unrestricted=apoc.*
-dbms.security.procedures.allowlist=apoc.*
+# Comma separated list of JAX-RS packages containing JAX-RS resources, one
+# package name for each mountpoint. The listed package names will be loaded
+# under the mountpoints specified. Uncomment this line to mount the
+# org.neo4j.examples.server.unmanaged.HelloWorldResource.java from
+# neo4j-server-examples under /examples/unmanaged, resulting in a final URL of
+# http://localhost:7474/examples/unmanaged/helloworld/{nodeId}
+#server.unmanaged_extension_classes=org.neo4j.examples.server.unmanaged=/examples/unmanaged
+
+# A comma separated list of procedures and user defined functions that are allowed
+# full access to the database through unsupported/insecure internal APIs.
+#dbms.security.procedures.unrestricted=my.extensions.example,my.procedures.*
+
+# A comma separated list of procedures to be loaded by default.
+# Leaving this unconfigured will load all procedures found.
+#dbms.security.procedures.allowlist=apoc.coll.*,apoc.load.*,gds.*
+
+#********************************************************************
+# JVM Parameters
+#********************************************************************
+
+# G1GC generally strikes a good balance between throughput and tail
+# latency, without too much tuning.
+server.jvm.additional=-XX:+UseG1GC
+
+# Have common exceptions keep producing stack traces, so they can be
+# debugged regardless of how often logs are rotated.
+server.jvm.additional=-XX:-OmitStackTraceInFastThrow
+
+# Make sure that `initmemory` is not only allocated, but committed to
+# the process, before starting the database. This reduces memory
+# fragmentation, increasing the effectiveness of transparent huge
+# pages. It also reduces the possibility of seeing performance drop
+# due to heap-growing GC events, where a decrease in available page
+# cache leads to an increase in mean IO response time.
+# Try reducing the heap memory, if this flag degrades performance.
+server.jvm.additional=-XX:+AlwaysPreTouch
+
+# Trust that non-static final fields are really final.
+# This allows more optimizations and improves overall performance.
+# NOTE: Disable this if you use embedded mode, or have extensions or dependencies that may use reflection or
+# serialization to change the value of final fields!
+server.jvm.additional=-XX:+UnlockExperimentalVMOptions
+server.jvm.additional=-XX:+TrustFinalNonStaticFields
+
+# Disable explicit garbage collection, which is occasionally invoked by the JDK itself.
+server.jvm.additional=-XX:+DisableExplicitGC
+
+# Restrict size of cached JDK buffers to 1 KB
+server.jvm.additional=-Djdk.nio.maxCachedBufferSize=1024
+
+# More efficient buffer allocation in Netty by allowing direct no cleaner buffers.
+server.jvm.additional=-Dio.netty.tryReflectionSetAccessible=true
+
+# Exits JVM on the first occurrence of an out-of-memory error. Its preferable to restart VM in case of out of memory errors.
+# server.jvm.additional=-XX:+ExitOnOutOfMemoryError
+
+# Expand Diffie Hellman (DH) key size from default 1024 to 2048 for DH-RSA cipher suites used in server TLS handshakes.
+# This is to protect the server from any potential passive eavesdropping.
+server.jvm.additional=-Djdk.tls.ephemeralDHKeySize=2048
+
+# This mitigates a DDoS vector.
+server.jvm.additional=-Djdk.tls.rejectClientInitiatedRenegotiation=true
+
+# Enable remote debugging
+#server.jvm.additional=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+
+# This filter prevents deserialization of arbitrary objects via java object serialization, addressing potential vulnerabilities.
+# By default this filter whitelists all neo4j classes, as well as classes from the hazelcast library and the java standard library.
+# These defaults should only be modified by expert users!
+# For more details (including filter syntax) see: https://openjdk.java.net/jeps/290
+#server.jvm.additional=-Djdk.serialFilter=java.**;org.neo4j.**;com.neo4j.**;com.hazelcast.**;net.sf.ehcache.Element;com.sun.proxy.*;org.openjdk.jmh.**;!*
+
+# Increase the default flight recorder stack sampling depth from 64 to 256, to avoid truncating frames when profiling.
+server.jvm.additional=-XX:FlightRecorderOptions=stackdepth=256
+
+# Allow profilers to sample between safepoints. Without this, sampling profilers may produce less accurate results.
+server.jvm.additional=-XX:+UnlockDiagnosticVMOptions
+server.jvm.additional=-XX:+DebugNonSafepoints
+
+# Open modules for neo4j to allow internal access
+server.jvm.additional=--add-opens=java.base/java.nio=ALL-UNNAMED
+server.jvm.additional=--add-opens=java.base/java.io=ALL-UNNAMED
+server.jvm.additional=--add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+
+# Enable native memory access
+server.jvm.additional=--enable-native-access=ALL-UNNAMED
+
+# Enable access to JDK vector API
+# server.jvm.additional=--add-modules=jdk.incubator.vector
+
+# Disable logging JMX endpoint.
+server.jvm.additional=-Dlog4j2.disable.jmx=true
+
+# Increasing the JSON log string maximum length
+server.jvm.additional=-Dlog4j.layout.jsonTemplate.maxStringLength=32768
+
+# Limit JVM metaspace and code cache to allow garbage collection. Used by cypher for code generation and may grow indefinitely unless constrained.
+# Useful for memory constrained environments
+#server.jvm.additional=-XX:MaxMetaspaceSize=1024m
+#server.jvm.additional=-XX:ReservedCodeCacheSize=512m
+
+# Allow big methods to be JIT compiled.
+# Useful for big queries and big expressions where cypher code generation can create large methods.
+#server.jvm.additional=-XX:-DontCompileHugeMethods
+
+#********************************************************************
+# Wrapper Windows NT/2000/XP Service Properties
+#********************************************************************
+# WARNING - Do not modify any of these properties when an application
+#  using this configuration file has been installed as a service.
+#  Please uninstall the service before modifying this section.  The
+#  service can then be reinstalled.
+
+# Name of the service
+server.windows_service_name=neo4j
 ```
 
 ## Step 4: Create Neo4j User and Directories
@@ -190,29 +352,58 @@ sudo chown -R neo4j:neo4j /etc/neo4j
 sudo chmod 755 /var/lib/neo4j/import
 ```
 
-## Step 5: Install APOC and Additional Plugins
+## Step 5: Install APOC and GDS Plugins
+
+**For Neo4j Community Edition (installed via apt)** - plugins need to be downloaded manually:
 
 ```bash
 # Navigate to plugins directory
 cd /var/lib/neo4j/plugins
 
-# Download APOC plugin (required for most advanced operations)
-sudo wget https://github.com/neo4j/apoc/releases/download/5.15.0/apoc-5.15.0-extended.jar
+# Download APOC plugin for Neo4j 5.26 (WORKING URLS)
+sudo wget https://github.com/neo4j/apoc/releases/download/5.26.0/apoc-5.26.0-core.jar
 
-# Download Graph Data Science (GDS) plugin
-sudo wget https://neo4j.com/artifact.php?name=neo4j-graph-data-science-2.5.0.jar
-
-# Download GraphQL plugin
-sudo wget https://github.com/neo4j-graphql/neo4j-graphql-java/releases/download/1.5.0/neo4j-graphql-1.5.0.jar
-
-# Download Elasticsearch integration
-sudo wget https://github.com/neo4j-contrib/neo4j-elasticsearch/releases/download/4.4.0.2/elasticsearch-6.5.4.jar
+# Download Graph Data Science (GDS) plugin for Neo4j 5.26 (WORKING URL)
+sudo wget https://github.com/neo4j/graph-data-science/releases/download/2.8.0/neo4j-graph-data-science-2.8.0.jar
 
 # Set ownership
 sudo chown neo4j:neo4j *.jar
 
+# Enable plugins in configuration (add to neo4j.conf)
+echo "" | sudo tee -a /etc/neo4j/neo4j.conf
+echo "# Enable APOC and GDS procedures" | sudo tee -a /etc/neo4j/neo4j.conf
+echo "dbms.security.procedures.unrestricted=apoc.*,gds.*" | sudo tee -a /etc/neo4j/neo4j.conf
+echo "dbms.security.procedures.allowlist=apoc.*,gds.*" | sudo tee -a /etc/neo4j/neo4j.conf
+
 # Restart Neo4j to load the plugins
 sudo systemctl restart neo4j
+
+# Verify plugins are loaded
+sudo systemctl status neo4j
+```
+
+**Verify Plugin Installation:**
+
+```bash
+# Test APOC in Neo4j Browser or cypher-shell
+cypher-shell -u neo4j -p your-password "RETURN apoc.version();"
+
+# Test GDS
+cypher-shell -u neo4j -p your-password "RETURN gds.version();"
+
+# Test both plugins are loaded
+cypher-shell -u neo4j -p your-password "CALL dbms.procedures() YIELD name WHERE name STARTS WITH 'apoc' OR name STARTS WITH 'gds' RETURN count(name) as plugin_procedures;"
+```
+
+**Optional: Elasticsearch Integration (Advanced)**
+
+```bash
+# NOTE: Only install if you need to sync Neo4j data to Elasticsearch for search
+# This is NOT required for core Neo4j functionality
+
+# Requires GraphAware framework - complex setup
+# See: https://github.com/graphaware/neo4j-to-elasticsearch
+# Recommendation: Skip for now, add later if needed for specific search use cases
 ```
 
 ## Step 6: Start and Enable Neo4j
@@ -472,15 +663,28 @@ server.jvm.additional=-XX:+UseTransparentHugePages
 ## Step 13: Monitoring and Maintenance
 
 ### Query Performance Monitoring:
-```cypher
-// Enable query logging in neo4j.conf
-dbms.logs.query.enabled=true
-dbms.logs.query.threshold=1000ms
+```bash
+# Enable query logging in neo4j.conf (uncomment these lines)
+# Note: Query logging is not enabled by default in Neo4j 5.x
+# You need to configure logging in server-logs.xml or user-logs.xml
 
-// View slow queries
-CALL dbms.queryJmx("org.neo4j:instance=kernel#0,name=Query*")
-YIELD attributes
-RETURN attributes.question, attributes.QueryExecutionLatency
+# Monitor slow queries in logs
+sudo tail -f /var/log/neo4j/debug.log | grep "SLOW"
+
+# Check database statistics
+```
+
+```cypher
+// View database statistics
+CALL dbms.queryJmx("*:*")
+YIELD name, attributes
+WHERE name CONTAINS "Primitive"
+RETURN name, attributes
+
+// Check transaction statistics  
+CALL dbms.listTransactions()
+YIELD transactionId, currentQuery, status, startTime
+RETURN transactionId, currentQuery, status, startTime
 ```
 
 ### Health Checks:
@@ -623,6 +827,31 @@ features = user_features.merge(network_features, on='user_id')
 2. **Out of memory errors**: Increase heap size in neo4j.conf
 3. **Slow queries**: Add appropriate indexes and analyze query plans
 4. **Import failures**: Check file permissions in import directory
+5. **HTTP interface not accessible**: Check that HTTP connector is correctly configured with port 7474 (not 7687)
+
+### Critical Configuration Fix Required:
+**IMPORTANT**: Your current config has an ERROR - HTTP port is set to 7687 instead of 7474!
+
+```bash
+# Check your current HTTP configuration
+grep "server.http.listen_address" /etc/neo4j/neo4j.conf
+# Currently shows: server.http.listen_address=0.0.0.0:7687 ← THIS IS WRONG!
+
+# FIX IT - Change HTTP port from 7687 to 7474:
+sudo sed -i 's/server.http.listen_address=0.0.0.0:7687/server.http.listen_address=0.0.0.0:7474/' /etc/neo4j/neo4j.conf
+
+# Verify the fix
+grep "server.http.listen_address" /etc/neo4j/neo4j.conf
+# Should now show: server.http.listen_address=0.0.0.0:7474 ← CORRECT!
+
+# Restart Neo4j to apply changes
+sudo systemctl restart neo4j
+
+# Check status
+sudo systemctl status neo4j
+```
+
+**Without this fix, your Neo4j Browser will NOT be accessible!**
 
 ### Performance Troubleshooting:
 ```cypher
