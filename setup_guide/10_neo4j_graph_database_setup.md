@@ -356,6 +356,11 @@ sudo chmod 755 /var/lib/neo4j/import
 
 **For Neo4j Community Edition (installed via apt)** - plugins need to be downloaded manually:
 
+**IMPORTANT - Version Compatibility:**
+- Neo4j 5.26.x → GDS 2.13.x (we use 2.13.4)
+- Neo4j 5.26.x → APOC 5.26.x (we use 5.26.0)
+- Check [Neo4j GDS Compatibility Matrix](https://neo4j.com/docs/graph-data-science/current/installation/supported-neo4j-versions/) for latest versions
+
 ```bash
 # Navigate to plugins directory
 cd /var/lib/neo4j/plugins
@@ -363,8 +368,8 @@ cd /var/lib/neo4j/plugins
 # Download APOC plugin for Neo4j 5.26 (WORKING URLS)
 sudo wget https://github.com/neo4j/apoc/releases/download/5.26.0/apoc-5.26.0-core.jar
 
-# Download Graph Data Science (GDS) plugin for Neo4j 5.26 (WORKING URL)
-sudo wget https://github.com/neo4j/graph-data-science/releases/download/2.8.0/neo4j-graph-data-science-2.8.0.jar
+# Download Graph Data Science (GDS) plugin for Neo4j 5.26 (COMPATIBLE VERSION)
+sudo wget https://github.com/neo4j/graph-data-science/releases/download/2.13.4/neo4j-graph-data-science-2.13.4.jar
 
 # Set ownership
 sudo chown neo4j:neo4j *.jar
@@ -395,15 +400,21 @@ cypher-shell -u neo4j -p your-password "RETURN gds.version();"
 cypher-shell -u neo4j -p your-password "CALL dbms.procedures() YIELD name WHERE name STARTS WITH 'apoc' OR name STARTS WITH 'gds' RETURN count(name) as plugin_procedures;"
 ```
 
-**Optional: Elasticsearch Integration (Advanced)**
+**Elasticsearch Integration Status**
 
 ```bash
-# NOTE: Only install if you need to sync Neo4j data to Elasticsearch for search
-# This is NOT required for core Neo4j functionality
-
-# Requires GraphAware framework - complex setup
-# See: https://github.com/graphaware/neo4j-to-elasticsearch
-# Recommendation: Skip for now, add later if needed for specific search use cases
+# IMPORTANT: No official Elasticsearch integration exists for Neo4j 5.x
+# 
+# Available plugins only support Neo4j 3.x:
+# - neo4j-contrib/neo4j-elasticsearch (max: Neo4j 3.5.6)
+# - GraphAware plugins (abandoned for Neo4j 5.x)
+#
+# Alternative approaches:
+# 1. Custom integration via APOC + REST APIs
+# 2. Use Kafka to stream data: Neo4j → Kafka → Elasticsearch  
+# 3. Keep systems separate (recommended)
+#
+# Your Elasticsearch cluster (192.168.1.184:9200) works independently
 ```
 
 ## Step 6: Start and Enable Neo4j
@@ -828,6 +839,23 @@ features = user_features.merge(network_features, on='user_id')
 3. **Slow queries**: Add appropriate indexes and analyze query plans
 4. **Import failures**: Check file permissions in import directory
 5. **HTTP interface not accessible**: Check that HTTP connector is correctly configured with port 7474 (not 7687)
+6. **GDS Plugin ClassNotFoundException**: Wrong GDS version for your Neo4j version
+
+### GDS Plugin Compatibility Error:
+```bash
+# Error: ClassNotFoundException: org.neo4j.internal.batchimport.Configuration
+# Cause: Incompatible GDS version
+
+# Fix - Remove incompatible version and install correct one:
+cd /var/lib/neo4j/plugins
+sudo rm neo4j-graph-data-science-*.jar
+sudo wget https://github.com/neo4j/graph-data-science/releases/download/2.13.4/neo4j-graph-data-science-2.13.4.jar
+sudo chown neo4j:neo4j *.jar
+sudo systemctl restart neo4j
+
+# COMPATIBILITY MATRIX (Official Neo4j):
+# Neo4j 5.26 → GDS 2.13.x (Use 2.13.4)
+```
 
 ### Critical Configuration Fix Required:
 **IMPORTANT**: Your current config has an ERROR - HTTP port is set to 7687 instead of 7474!
