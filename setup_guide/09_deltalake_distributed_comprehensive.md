@@ -680,7 +680,7 @@ SELECT
     count(*) as transactions,
     sum(quantity * price) as revenue,
     avg(price) as avg_price,
-    percentile_cont(0.5) WITHIN GROUP (ORDER BY price) as median_price
+    approx_percentile(price, 0.5) as median_price
 FROM sales_transactions 
 WHERE year = 2024
 GROUP BY region, year, month

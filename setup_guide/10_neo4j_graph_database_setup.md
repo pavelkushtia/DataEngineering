@@ -57,9 +57,6 @@ sudo apt update
 
 # Install Neo4j Community Edition
 sudo apt install -y neo4j
-
-# Install APOC (Awesome Procedures on Cypher) plugin
-sudo apt install -y neo4j-plugin-apoc
 ```
 
 ## Step 3: Configuration Setup
@@ -193,11 +190,14 @@ sudo chown -R neo4j:neo4j /etc/neo4j
 sudo chmod 755 /var/lib/neo4j/import
 ```
 
-## Step 5: Install Additional Plugins
+## Step 5: Install APOC and Additional Plugins
 
 ```bash
 # Navigate to plugins directory
 cd /var/lib/neo4j/plugins
+
+# Download APOC plugin (required for most advanced operations)
+sudo wget https://github.com/neo4j/apoc/releases/download/5.15.0/apoc-5.15.0-extended.jar
 
 # Download Graph Data Science (GDS) plugin
 sudo wget https://neo4j.com/artifact.php?name=neo4j-graph-data-science-2.5.0.jar
@@ -210,6 +210,9 @@ sudo wget https://github.com/neo4j-contrib/neo4j-elasticsearch/releases/download
 
 # Set ownership
 sudo chown neo4j:neo4j *.jar
+
+# Restart Neo4j to load the plugins
+sudo systemctl restart neo4j
 ```
 
 ## Step 6: Start and Enable Neo4j
