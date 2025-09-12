@@ -391,13 +391,13 @@ sudo systemctl status neo4j
 
 ```bash
 # Test APOC in Neo4j Browser or cypher-shell
-cypher-shell -u neo4j -p your-password "RETURN apoc.version();"
+cypher-shell -u neo4j -p 12345678 "RETURN apoc.version();"
 
 # Test GDS
-cypher-shell -u neo4j -p your-password "RETURN gds.version();"
+cypher-shell -u neo4j -p 12345678 "RETURN gds.version();"
 
 # Test both plugins are loaded
-cypher-shell -u neo4j -p your-password "CALL dbms.procedures() YIELD name WHERE name STARTS WITH 'apoc' OR name STARTS WITH 'gds' RETURN count(name) as plugin_procedures;"
+cypher-shell -u neo4j -p 12345678 "CALL dbms.procedures() YIELD name WHERE name STARTS WITH 'apoc' OR name STARTS WITH 'gds' RETURN count(name) as plugin_procedures;"
 ```
 
 **Elasticsearch Integration Status**

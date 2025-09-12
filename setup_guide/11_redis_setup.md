@@ -44,218 +44,141 @@ redis-cli --version
 
 ## Step 2: Redis Configuration
 
-### Main Redis Configuration:
+### Complete Redis Configuration File
+
+**Important:** Before modifying your Redis configuration, always create a backup:
+
 ```bash
+# Create backup of current configuration
+sudo cp /etc/redis/redis.conf /etc/redis/redis.conf.backup.$(date +%Y%m%d_%H%M%S)
+
+# Edit the configuration file
 sudo nano /etc/redis/redis.conf
 ```
 
-```conf
-################################## NETWORK #####################################
+### Option 1: Use Current System Configuration (Recommended)
 
-# Accept connections from any IP address
+Your current Redis installation already has a complete and properly configured `redis.conf` file. You can view the current configuration:
+
+```bash
+# View current configuration
+sudo cat /etc/redis/redis.conf | head -50
+
+# See the complete configuration structure
+sudo less /etc/redis/redis.conf
+```
+
+### Option 2: Key Configuration Settings to Customize
+
+Since your current configuration is already comprehensive (Redis 7.0.15), you only need to modify specific sections for your setup. Here are the key settings to customize:
+
+```bash
+# Edit specific settings in the existing config
+sudo nano /etc/redis/redis.conf
+```
+
+**Critical settings to modify:**
+
+1. **Network Configuration (around line 90-120):**
+```conf
+# CUSTOMIZE: Change to 0.0.0.0 to accept connections from any IP
 bind 0.0.0.0
+
+# CUSTOMIZE: Set to 'no' if binding to 0.0.0.0  
 protected-mode no
 
 # Port configuration
 port 6379
+```
 
-# TCP listen backlog
-tcp-backlog 511
+2. **Security Configuration (around line 790-810):**
+```conf
+# CUSTOMIZE: Set a strong password for Redis authentication
+requirepass your-strong-redis-password-here
+```
 
-# TCP keepalive
-tcp-keepalive 300
-
-################################# GENERAL #####################################
-
-# Run as daemon
-daemonize yes
-
-# Process ID file
-pidfile /var/run/redis/redis-server.pid
-
-# Log level
-loglevel notice
-
-# Log file
-logfile /var/log/redis/redis-server.log
-
-# Number of databases
-databases 16
-
-################################ SNAPSHOTTING  ################################
-
-# Save snapshots
-save 900 1      # Save if at least 1 key changed in 900 seconds
-save 300 10     # Save if at least 10 keys changed in 300 seconds  
-save 60 10000   # Save if at least 10000 keys changed in 60 seconds
-
-# Stop writes on background save errors
-stop-writes-on-bgsave-error yes
-
-# Compress RDB files
-rdbcompression yes
-
-# Checksum RDB files
-rdbchecksum yes
-
-# RDB filename
-dbfilename dump.rdb
-
-# Directory for RDB and AOF files
-dir /var/lib/redis
-
-################################# REPLICATION #################################
-
-# Replica serves stale data when link with master is down
-replica-serve-stale-data yes
-
-# Replicas are read-only by default
-replica-read-only yes
-
-# Replication diskless sync
-repl-diskless-sync no
-
-# Replication diskless sync delay
-repl-diskless-sync-delay 5
-
-################################## SECURITY ###################################
-
-# Require password authentication
-requirepass your-redis-password
-
-################################### CLIENTS ####################################
-
-# Maximum number of connected clients
-maxclients 10000
-
-############################## MEMORY MANAGEMENT #############################
-
-# Maximum memory usage (adjust based on available RAM)
+3. **Memory Management (around line 1020-1040):**
+```conf
+# CUSTOMIZE: Set based on available system RAM (leave some for OS)
+# Uncomment and set appropriate value based on your RAM
 maxmemory 2gb
 
 # Memory eviction policy
 maxmemory-policy allkeys-lru
+```
 
-# Memory sampling
-maxmemory-samples 5
+4. **Persistence Configuration (around line 400-450):**
+```conf
+# CUSTOMIZE: Adjust save points based on your needs
+save 3600 1 300 100 60 10000
 
-############################# LAZY FREEING ####################################
-
-# Lazy freeing for DEL commands
-lazyfree-lazy-eviction no
-lazyfree-lazy-expire no
-lazyfree-lazy-server-del no
-replica-lazy-flush no
-
-############################ KERNEL OVERCOMMIT HANDLING ###################
-
-# Kernel overcommit memory setting warning disable
-vm-enabled yes
-
-########################## KERNEL TRANSPARENT HUGEPAGE ####################
-
-# Disable kernel transparent huge pages
-disable-thp yes
-
-############################# APPEND ONLY FILE #############################
-
-# Enable AOF persistence
+# Enable AOF persistence for better durability
 appendonly yes
-
-# AOF filename
-appendfilename "appendonly.aof"
-
-# AOF sync policy
 appendfsync everysec
+```
 
-# AOF rewrite settings
-no-appendfsync-on-rewrite no
-auto-aof-rewrite-percentage 100
-auto-aof-rewrite-min-size 64mb
+5. **For Replica Setup (uncomment when setting up replica):**
+```conf
+# CUSTOMIZE for replica setup: 
+# replicaof 192.168.1.184 6379
+# masterauth your-redis-password
+```
 
-# Load truncated AOF file on startup
-aof-load-truncated yes
+### Configuration Template for Direct Replacement
 
-# AOF use RDB preamble
-aof-use-rdb-preamble yes
+If you prefer to replace the entire configuration file, here's a production-ready template based on Redis 7.0+ defaults:
 
-################################ LUA SCRIPTING  ###############################
+```bash
+# Download Redis 7.0+ default configuration
+wget https://raw.githubusercontent.com/redis/redis/7.0/redis.conf -O /tmp/redis.conf.template
 
-# Lua script timeout
-lua-time-limit 5000
+# Or create from your current config
+sudo cp /etc/redis/redis.conf /tmp/redis-template.conf
 
-################################ REDIS CLUSTER  ###############################
+# Customize the template, then replace
+sudo cp /tmp/redis-template.conf /etc/redis/redis.conf
+```
 
-# Cluster mode (disabled for single instance setup)
-# cluster-enabled yes
-# cluster-config-file nodes-6379.conf
-# cluster-node-timeout 15000
+### Quick Configuration Commands
 
-################################## SLOW LOG ###################################
+For quick configuration without manual editing:
 
-# Slow query log
-slowlog-log-slower-than 10000
-slowlog-max-len 128
+```bash
+# 1. Set Redis to accept external connections
+sudo sed -i 's/^bind 127.0.0.1 -::1/bind 0.0.0.0/' /etc/redis/redis.conf
+sudo sed -i 's/^protected-mode yes/protected-mode no/' /etc/redis/redis.conf
 
-################################ LATENCY MONITOR ##############################
+# 2. Set password (replace 'your-password' with actual password)
+sudo sed -i 's/^# requirepass foobared/requirepass your-password/' /etc/redis/redis.conf
 
-# Latency monitoring
-latency-monitor-threshold 100
+# 3. Set memory limit (adjust 2gb as needed)
+echo "maxmemory 2gb" | sudo tee -a /etc/redis/redis.conf
+echo "maxmemory-policy allkeys-lru" | sudo tee -a /etc/redis/redis.conf
 
-############################# EVENT NOTIFICATION ##############################
+# 4. Enable AOF persistence
+sudo sed -i 's/^appendonly no/appendonly yes/' /etc/redis/redis.conf
 
-# Keyspace notifications
-notify-keyspace-events ""
+# 5. Apply changes
+sudo systemctl restart redis-server
+```
 
-############################### ADVANCED CONFIG #############################
+### Verify Configuration
 
-# Hash settings
-hash-max-ziplist-entries 512
-hash-max-ziplist-value 64
+After making changes, verify the configuration is correct:
 
-# List settings
-list-max-ziplist-size -2
-list-compress-depth 0
+```bash
+# Test configuration syntax
+sudo redis-server /etc/redis/redis.conf --test-config
 
-# Set settings
-set-max-intset-entries 512
+# Check if Redis starts successfully
+sudo systemctl restart redis-server
+sudo systemctl status redis-server
 
-# ZSet settings
-zset-max-ziplist-entries 128
-zset-max-ziplist-value 64
+# Test connection
+redis-cli -h 192.168.1.184 -a your-password ping
 
-# HyperLogLog settings
-hll-sparse-max-bytes 3000
-
-# Stream settings
-stream-node-max-bytes 4096
-stream-node-max-entries 100
-
-# Active rehashing
-activerehashing yes
-
-# Client output buffer limits
-client-output-buffer-limit normal 0 0 0
-client-output-buffer-limit replica 256mb 64mb 60
-client-output-buffer-limit pubsub 32mb 8mb 60
-
-# Client query buffer limit
-client-query-buffer-limit 1gb
-
-# Protocol buffer limit
-proto-max-bulk-len 512mb
-
-# Frequency of rehashing
-hz 10
-
-# Dynamic HZ
-dynamic-hz yes
-
-# AOF rewrite incremental fsync
-aof-rewrite-incremental-fsync yes
-
-# RDB incremental fsync
-rdb-save-incremental-fsync yes
+# View current settings
+redis-cli -h 192.168.1.184 -a your-password CONFIG GET "*"
 ```
 
 ## Step 3: System Configuration
