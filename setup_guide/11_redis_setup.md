@@ -183,50 +183,230 @@ redis-cli -h 192.168.1.184 -a your-password CONFIG GET "*"
 
 ## Step 3: System Configuration
 
-### Configure system settings for Redis:
+### Current System State Analysis
+
+First, let's check the current system configuration:
+
 ```bash
-# Increase system limits
-sudo nano /etc/security/limits.conf
+# Check current kernel parameters
+sudo sysctl vm.overcommit_memory net.core.somaxconn vm.swappiness
+
+# Check transparent huge pages status
+cat /sys/kernel/mm/transparent_hugepage/enabled
+cat /sys/kernel/mm/transparent_hugepage/defrag
+
+# Check existing sysctl configurations
+ls -la /etc/sysctl.d/
+cat /etc/sysctl.conf | grep -v '^#' | grep -v '^$'
 ```
 
-Add these lines:
+### Option 1: Add Redis-Specific Configuration File (Recommended)
+
+Create a dedicated Redis configuration file in `/etc/sysctl.d/`:
+
+```bash
+# Create Redis-specific sysctl configuration
+sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
+# Redis optimization settings
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+
+# Redis memory management
+vm.swappiness = 1
+EOF
 ```
+
+### Option 2: Add to Main sysctl.conf
+
+Your current `/etc/sysctl.conf` already has Kafka optimizations. Add Redis settings:
+
+```bash
+# Backup current sysctl.conf
+sudo cp /etc/sysctl.conf /etc/sysctl.conf.backup.$(date +%Y%m%d_%H%M%S)
+
+# Add Redis settings to sysctl.conf
+sudo tee -a /etc/sysctl.conf > /dev/null <<EOF
+
+# Redis optimization settings
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+EOF
+```
+
+### Configure System Limits
+
+```bash
+# Increase system limits for Redis user
+sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
 redis soft nofile 65535
 redis hard nofile 65535
 redis soft nproc 65535
 redis hard nproc 65535
+EOF
 ```
 
-### Configure kernel parameters:
+### Disable Transparent Huge Pages
+
+**Current Status Check:**
 ```bash
-sudo nano /etc/sysctl.conf
+# Current settings (should show current values)
+echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
+echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
 ```
 
-Add these settings:
-```
-# Redis optimization
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-
-# Disable transparent huge pages
+**Temporary Disable (immediate effect):**
+```bash
+# Disable temporarily (will reset on reboot)
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 ```
 
-Apply the changes:
+**Permanent Disable (Method 1 - systemd service):**
 ```bash
-sudo sysctl -p
+# Create systemd service to disable THP on boot
+sudo tee /etc/systemd/system/disable-thp.service > /dev/null <<EOF
+[Unit]
+Description=Disable Transparent Huge Pages (THP)
+DefaultDependencies=false
+After=sysinit.target local-fs.target
+Before=redis-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=basic.target
+EOF
+
+# Enable the service
+sudo systemctl daemon-reload
+sudo systemctl enable disable-thp.service
 ```
 
-### Make THP disable persistent:
+**Permanent Disable (Method 2 - rc.local):**
 ```bash
-sudo nano /etc/rc.local
-```
-
-Add before `exit 0`:
-```bash
+# Alternative: Use rc.local (if it exists)
+if [ -f /etc/rc.local ]; then
+    sudo cp /etc/rc.local /etc/rc.local.backup
+    sudo sed -i '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag' /etc/rc.local
+else
+    # Create rc.local if it doesn't exist
+    sudo tee /etc/rc.local > /dev/null <<EOF
+#!/bin/bash
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
 echo never > /sys/kernel/mm/transparent_hugepage/defrag
+exit 0
+EOF
+    sudo chmod +x /etc/rc.local
+fi
+```
+
+### Apply All Changes
+
+```bash
+# Apply sysctl changes
+sudo sysctl -p
+sudo sysctl -p /etc/sysctl.d/99-redis.conf  # if using dedicated file
+
+# Disable THP immediately
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
+# Start THP disable service (if using systemd method)
+sudo systemctl start disable-thp.service
+```
+
+### Verify Configuration
+
+```bash
+# Verify sysctl settings
+echo "=== Kernel Parameters ==="
+sysctl vm.overcommit_memory net.core.somaxconn vm.swappiness
+
+# Verify THP is disabled
+echo "=== Transparent Huge Pages ==="
+echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
+echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
+
+# Verify limits
+echo "=== Redis User Limits ==="
+sudo su - redis -c 'ulimit -n; ulimit -u' 2>/dev/null || echo "Redis user not available for testing"
+
+# Check Redis warnings
+redis-cli -h 127.0.0.1 info server | grep -E "(redis_version|uptime)"
+```
+
+### Expected Output After Configuration
+
+After proper configuration, you should see:
+```
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+vm.swappiness = 1
+THP enabled: always madvise [never]
+THP defrag: always defer defer+madvise madvise [never]
+```
+
+### Quick Configuration Script
+
+For automated setup, you can run all Redis system optimizations at once:
+
+```bash
+#!/bin/bash
+# Redis System Optimization Script
+
+echo "=== Redis System Configuration ==="
+
+# Create Redis sysctl configuration
+echo "Creating Redis sysctl configuration..."
+sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
+# Redis optimization settings
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+vm.swappiness = 1
+EOF
+
+# Configure system limits
+echo "Configuring system limits..."
+sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
+redis soft nofile 65535
+redis hard nofile 65535
+redis soft nproc 65535
+redis hard nproc 65535
+EOF
+
+# Create THP disable service
+echo "Creating THP disable service..."
+sudo tee /etc/systemd/system/disable-thp.service > /dev/null <<EOF
+[Unit]
+Description=Disable Transparent Huge Pages (THP)
+DefaultDependencies=false
+After=sysinit.target local-fs.target
+Before=redis-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=basic.target
+EOF
+
+# Enable services and apply changes
+echo "Applying configuration..."
+sudo systemctl daemon-reload
+sudo systemctl enable disable-thp.service
+sudo systemctl start disable-thp.service
+sudo sysctl -p /etc/sysctl.d/99-redis.conf
+
+echo "=== Configuration Complete ==="
+echo "Current values:"
+sysctl vm.overcommit_memory net.core.somaxconn vm.swappiness
+echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
+echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
 ```
 
 ## Step 4: Create Redis Directories and Permissions
