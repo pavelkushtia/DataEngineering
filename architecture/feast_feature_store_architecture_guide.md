@@ -3,6 +3,7 @@
 ## 🏗️ Your Current Feast Feature Store Setup
 
 This guide explains the Feast Feature Store architecture based on **your exact setup**:
+
 - **cpu-node1** (192.168.1.184) - Feast Registry + Redis (Online Store) + PostgreSQL (Offline Store)
 - **cpu-node2** (192.168.1.187) - Spark Worker (Feature Engineering)
 - **worker-node3** (192.168.1.190) - Spark Worker (Feature Engineering)
@@ -51,6 +52,7 @@ This guide explains the Feast Feature Store architecture based on **your exact s
 **What you have:** A distributed Feature Store with separate online/offline storage, centralized registry, and integrated ML pipeline.
 
 ### **Plain English Explanation:**
+
 - **Centralized Registry** - Single source of truth for all feature definitions
 - **Fast Online Store (Redis)** - Serves features in milliseconds for real-time predictions
 - **Big Offline Store (PostgreSQL)** - Stores historical features for training and batch jobs
@@ -58,6 +60,7 @@ This guide explains the Feast Feature Store architecture based on **your exact s
 - **ML Integration (GPU Node)** - Consumes features for model training and inference
 
 ### **Data Flow:**
+
 1. **Raw Data** → PostgreSQL tables (user profiles, transactions, etc.)
 2. **Feature Engineering** → Spark processes raw data into features
 3. **Feature Storage** → Features stored in both online (Redis) and offline (PostgreSQL) stores
@@ -129,7 +132,7 @@ graph TB
     classDef client fill:#fef5e7,stroke:#d69e2e,stroke-width:2px
     
     class REGISTRY,ONLINE,OFFLINE,RAW_DATA storage
-    class SPARK_M,SPARK_W1,SPARK_W2 compute  
+    class SPARK_M,SPARK_W1,SPARK_W2 compute
     class GPU ml
     class WEB_APP,BATCH_ML client
 ```
@@ -145,6 +148,7 @@ graph TB
 **Plain English:** Think of it like a library catalog. It doesn't contain the actual books (features), but it knows exactly what books exist, where they are, who wrote them, and how to find them.
 
 **What it stores:**
+
 - Feature view definitions (what features exist)
 - Entity definitions (what things features describe - users, products, etc.)
 - Data source information (where raw data comes from)
@@ -160,6 +164,7 @@ graph TB
 **Plain English:** Like a convenience store - smaller selection, but you can get what you need instantly. When your website needs to make a real-time recommendation, it asks Redis.
 
 **Characteristics:**
+
 - **Speed:** < 10ms response time
 - **Data:** Latest feature values only
 - **Use Case:** Real-time inference, web applications, mobile apps
@@ -173,6 +178,7 @@ graph TB
 **Plain English:** Like a warehouse - has everything, including historical data, but takes longer to retrieve. Used for training models and batch analysis.
 
 **Characteristics:**
+
 - **Speed:** Seconds to minutes
 - **Data:** Complete historical feature data
 - **Use Case:** Model training, batch scoring, analytics
@@ -186,6 +192,7 @@ graph TB
 **Plain English:** Like a factory assembly line that takes raw materials (database records) and turns them into finished products (features ready for ML).
 
 **Process:**
+
 1. **Read** raw data from PostgreSQL
 2. **Transform** data (aggregations, calculations, joins)
 3. **Validate** feature quality
@@ -259,6 +266,7 @@ registry: postgresql://dataeng:YOUR_PASSWORD@192.168.1.184:5432/feast_registry
 ```
 
 **Why this configuration:**
+
 - **PostgreSQL:** ACID compliance ensures feature definitions are never corrupted
 - **Dedicated Database:** Separates registry from feature data
 - **Network Accessible:** All nodes can access registry
@@ -273,12 +281,14 @@ registry: postgresql://dataeng:YOUR_PASSWORD@192.168.1.184:5432/feast_registry
 Think of online and offline stores like two different types of restaurants:
 
 **Online Store (Redis) = Fast Food Restaurant:**
+
 - ✅ Super fast service (< 10ms)
 - ✅ Simple menu (current features only)
 - ❌ Limited history (just recent data)
 - 🎯 **Use Case:** "What's this user's current risk score for this transaction?"
 
 **Offline Store (PostgreSQL) = Full-Service Restaurant:**
+
 - ✅ Complete menu (all historical features)
 - ✅ Complex queries (aggregations, joins)
 - ❌ Slower service (seconds to minutes)
@@ -400,6 +410,7 @@ batch_engine:
 ```
 
 **What each setting does:**
+
 - **spark.master:** Tells Feast to use your distributed Spark cluster
 - **executor.memory:** How much RAM each Spark worker can use for processing
 - **executor.cores:** How many CPU cores each worker uses (parallel processing)
@@ -472,26 +483,31 @@ flowchart TB
 ### **Step-by-Step Breakdown:**
 
 #### **Step 1: Data Ingestion**
+
 - Raw user data lives in PostgreSQL tables
 - Activity logs stream in from applications
 - Transaction records stored as they happen
 
-#### **Step 2: Feature Engineering** 
+#### **Step 2: Feature Engineering**
+
 - Spark reads raw data from PostgreSQL
 - Calculates complex features (aggregations, time windows)
 - Example: "What's John's average session duration in the last 7 days?"
 
 #### **Step 3: Feature Storage**
+
 - All features written to offline store (complete history)
 - Latest features materialized to online store (fast access)
 - Both stores stay synchronized
 
 #### **Step 4: Model Training**
+
 - ML algorithms train on historical features from offline store
 - Models learn patterns: "Users with high session duration often purchase"
 - Trained models deployed to GPU node
 
 #### **Step 5: Real-time Prediction**
+
 - User visits website → triggers prediction request
 - System fetches John's current features from Redis (< 10ms)
 - Model uses features to predict purchase probability
@@ -575,6 +591,7 @@ flags:
 ### **Individual Component Configurations:**
 
 #### **Entity Definition Example:**
+
 ```python
 user = Entity(
     name="user",                           # Entity identifier
@@ -586,6 +603,7 @@ user = Entity(
 ```
 
 #### **Feature View Definition Example:**
+
 ```python
 user_activity_fv = FeatureView(
     name="user_activity_features",         # Feature view identifier
@@ -631,6 +649,7 @@ sequenceDiagram
 ```
 
 **Code Example:**
+
 ```python
 # Real-time feature serving
 features = fs.get_online_features(
@@ -667,6 +686,7 @@ sequenceDiagram
 ```
 
 **Code Example:**
+
 ```python
 # Batch training data generation
 entity_df = pd.DataFrame({
@@ -839,6 +859,7 @@ gantt
 ### **Consistency Strategies**
 
 #### **Strategy 1: TTL-Based Freshness**
+
 ```python
 # Features expire automatically
 user_activity_fv = FeatureView(
@@ -849,6 +870,7 @@ user_activity_fv = FeatureView(
 ```
 
 #### **Strategy 2: Scheduled Materialization**
+
 ```bash
 # Automated feature refresh
 feast materialize-incremental $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)
@@ -858,6 +880,7 @@ feast materialize-incremental $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)
 ```
 
 #### **Strategy 3: Change Data Capture (CDC)**
+
 Your PostgreSQL setup already supports CDC for real-time updates:
 
 ```python
@@ -875,18 +898,21 @@ Your PostgreSQL setup already supports CDC for real-time updates:
 As your ML needs grow, here's how your Feast architecture can evolve:
 
 #### **Current State (Good for 1-10 ML models):**
+
 - Single registry on cpu-node1
 - Redis online store (single instance)
 - PostgreSQL offline store (single instance)  
 - 2-node Spark cluster
 
 #### **Next Level (10-100 ML models):**
+
 - Redis cluster (sharded across nodes)
 - PostgreSQL read replicas
 - Larger Spark cluster (add more worker nodes)
 - Feature serving cache layer
 
 #### **Enterprise Scale (100+ ML models):**
+
 - Multi-region feature stores
 - Streaming feature engineering
 - Feature lineage tracking
@@ -933,28 +959,36 @@ flowchart TD
 ## 🔄 Architecture Evolution
 
 ### **Phase 1: Current Setup (Basic Feature Store)**
+
 ✅ **What you have now:**
+
 - Centralized registry
 - Online + offline stores  
 - Batch feature engineering
 - Basic ML integration
 
 ### **Phase 2: Enhanced Performance (Next 6 months)**
+
 🎯 **Recommended additions:**
+
 - Feature caching layer
 - Monitoring and alerting
 - Feature quality validation
 - Automated testing
 
 ### **Phase 3: Advanced Capabilities (6-12 months)**
+
 🚀 **Future enhancements:**
+
 - Real-time streaming features
 - Feature lineage tracking
 - A/B testing integration
 - Multi-tenant support
 
 ### **Phase 4: Production Excellence (1+ years)**
+
 🏆 **Enterprise features:**
+
 - Multi-region deployment
 - Advanced security controls
 - Cost optimization
