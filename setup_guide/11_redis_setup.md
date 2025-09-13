@@ -26,7 +26,7 @@ Redis (Remote Dictionary Server) is an open-source, in-memory data structure sto
 │  - Redis Master     │────│  - Redis Replica    │────│  - Redis Node       │    │  - Redis Client     │
 │  - PostgreSQL       │    │  - Neo4j            │    │  - (Role TBD)       │    │  - ML Feature Store │
 │  - Kafka Broker     │    │  - Other Services   │    │  - Other Services   │    │  - Model Serving    │
-│  192.168.1.184      │    │  192.168.1.187      │    │  192.168.1.XXX      │    │  192.168.1.79       │
+│  192.168.1.184      │    │  192.168.1.187      │    │  192.168.1.190      │    │  192.168.1.79       │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
@@ -636,7 +636,7 @@ slave0:ip=192.168.1.187,port=6379,state=online
 If worker-node3 should be another Redis replica, **follow the same comprehensive setup as cpu-node2:**
 
 ```bash
-# On worker-node3 (IP: 192.168.1.XXX)
+# On worker-node3 (IP: 192.168.1.190)
 sudo apt update
 sudo apt install -y redis-server redis-tools
 
@@ -693,28 +693,33 @@ fi
 sudo sed -i 's/^appendonly no/appendonly yes/' /etc/redis/redis.conf
 ```
 
-### Option B: Redis Sentinel (Automatic Failover)
+### Option B: Redis Sentinel (Automatic Failover) + Client
+
+**✅ Yes, Sentinel nodes can work as Redis clients!** This is a common deployment pattern.
 
 If worker-node3 should run Redis Sentinel for automatic failover:
 
 ```bash
 # On worker-node3
 sudo apt update
-sudo apt install -y redis-sentinel
+sudo apt install -y redis-sentinel redis-tools  # redis-tools for client functionality
 
 # Configure Sentinel
 sudo nano /etc/redis/sentinel.conf
 ```
 
-Sentinel configuration:
+**Sentinel configuration:**
 ```conf
-# Sentinel port
+# Sentinel port (different from Redis port)
 port 26379
 
-# Monitor master
+# Bind to all interfaces to accept client connections to Sentinel
+bind 0.0.0.0
+
+# Monitor master (quorum=2 means 2 Sentinels must agree on failover)
 sentinel monitor mymaster 192.168.1.184 6379 2
 
-# Authentication
+# Authentication for connecting to Redis instances
 sentinel auth-pass mymaster your-redis-password
 
 # Failover configuration
@@ -722,42 +727,247 @@ sentinel down-after-milliseconds mymaster 30000
 sentinel parallel-syncs mymaster 1
 sentinel failover-timeout mymaster 180000
 
+# Announce IP (important for client discovery)
+sentinel announce-ip 192.168.1.190
+sentinel announce-port 26379
+
+# Logging
+logfile /var/log/redis/redis-sentinel.log
+
 # Notification scripts (optional)
 # sentinel notification-script mymaster /var/redis/notify.sh
+# sentinel client-reconfig-script mymaster /var/redis/reconfig.sh
+```
+
+**Client Usage on Sentinel Node:**
+
+1. **Direct Redis Client Connection:**
+```bash
+# Connect to current master (Sentinel will tell you who's master)
+redis-cli -h $(redis-cli -h 192.168.1.190 -p 26379 SENTINEL get-master-addr-by-name mymaster | head -1) -a your-password ping
+```
+
+2. **Application Client with Sentinel Support:**
+```python
+# Python example using redis-py-sentinel
+import redis.sentinel
+
+# Sentinel connection
+sentinel = redis.sentinel.Sentinel([
+    ('192.168.1.184', 26379),  # cpu-node1 (if running Sentinel)
+    ('192.168.1.187', 26379),  # cpu-node2 (if running Sentinel)  
+    ('192.168.1.190', 26379),  # worker-node3 (Sentinel)
+], password='your-password')
+
+# Get master and replica connections
+master = sentinel.master_for('mymaster', password='your-password')
+slave = sentinel.slave_for('mymaster', password='your-password')
+
+# Use Redis normally
+master.set('key', 'value')
+value = slave.get('key')  # Read from replica for load balancing
+```
+
+3. **Benefits of Sentinel + Client on Same Node:**
+- **🔄 Automatic Failover**: Client automatically discovers new master
+- **⚡ Local Sentinel Queries**: Faster master/replica discovery
+- **💰 Resource Efficiency**: One machine serves dual purpose
+- **🔍 Monitoring**: Built-in monitoring of Redis health
+
+4. **Architecture with Sentinel + Client:**
+```
+┌─────────────────────────────────────┐
+│           worker-node3              │
+│  ┌─────────────┐  ┌──────────────┐  │
+│  │   Sentinel  │  │    Client    │  │
+│  │  Port 26379 │  │ Application  │  │
+│  │             │  │              │  │
+│  │  Monitors   │←─┤ Queries      │  │
+│  │  Master     │  │ Sentinel     │  │
+│  │  Replicas   │  │ for Master   │  │
+│  └─────────────┘  └──────────────┘  │
+└─────────────────────────────────────┘
+           ↕ Monitor/Failover
+┌─────────────┐    ┌─────────────┐
+│  Master     │────│   Replica   │
+│ cpu-node1   │    │  cpu-node2  │  
+└─────────────┘    └─────────────┘
+```
+
+5. **Production Considerations:**
+
+**✅ Recommended for:**
+- **ML Feature Serving**: Fast feature lookups with automatic failover
+- **Web Applications**: Session storage with high availability
+- **Microservices**: Service discovery and configuration with Redis
+- **Analytics**: Real-time metrics collection and querying
+
+**⚠️ Important Notes:**
+- **Sentinel Quorum**: Need at least 3 Sentinels for production (prevents split-brain)
+- **Network Latency**: Client on same node as Sentinel = faster queries
+- **Resource Planning**: Sentinel uses ~10-50MB RAM, minimal CPU
+- **Firewall**: Open port 26379 for Sentinel communication
+
+**🔧 Complete Setup Commands:**
+```bash
+# Start Sentinel service
+sudo systemctl start redis-sentinel
+sudo systemctl enable redis-sentinel
+
+# Verify Sentinel is monitoring
+redis-cli -h 192.168.1.190 -p 26379 SENTINEL masters
+
+# Test client discovery of master
+redis-cli -h 192.168.1.190 -p 26379 SENTINEL get-master-addr-by-name mymaster
 ```
 
 ### Option C: Redis Cluster Node (Horizontal Scaling)
 
+**❓ Common Misconception**: Redis Cluster CLI commands are **one-time setup commands**, they don't need to keep running!
+
 If you want to set up Redis Cluster for horizontal scaling:
 
+**Step 1: Configure each node for cluster mode**
 ```bash
 # On all nodes (cpu-node1, cpu-node2, worker-node3)
-# Modify redis.conf for cluster mode
+# Backup and modify redis.conf
 
+sudo cp /etc/redis/redis.conf /etc/redis/redis.conf.backup
 sudo nano /etc/redis/redis.conf
 ```
 
-Add cluster configuration:
+**Add cluster configuration:**
 ```conf
-# Enable cluster mode
+# Enable cluster mode (this makes Redis run as cluster node)
 cluster-enabled yes
-cluster-config-file nodes.conf
+
+# Cluster state file (auto-managed by Redis)
+cluster-config-file nodes-7001.conf  # Use different names per node
+
+# Node timeout
 cluster-node-timeout 15000
 
-# Different ports for each node
+# Use different ports for each node to avoid conflicts
 # cpu-node1: port 7001
 # cpu-node2: port 7002  
 # worker-node3: port 7003
+port 7001  # Adjust per node
 
-# Network configuration
+# Network configuration (same as before)
 bind 0.0.0.0
 protected-mode no
+
+# Same performance settings as master/replica setup
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+appendonly yes
 ```
 
-Create cluster:
+**Step 2: Start cluster nodes**
 ```bash
-# After configuring all nodes
-redis-cli --cluster create 192.168.1.184:7001 192.168.1.187:7002 192.168.1.XXX:7003 --cluster-replicas 0
+# On each node, restart Redis with cluster config
+sudo systemctl restart redis-server
+sudo systemctl status redis-server
+
+# Verify cluster mode is enabled
+redis-cli -h 192.168.1.184 -p 7001 cluster nodes
+# Should show cluster node info
+```
+
+**Step 3: Create cluster (ONE-TIME command)**
+```bash
+# Run this ONCE from any machine (not continuously!)
+redis-cli --cluster create \
+  192.168.1.184:7001 \
+  192.168.1.187:7002 \
+  192.168.1.190:7003 \
+  --cluster-replicas 0
+
+# This command (ONE-TIME ONLY):
+# 1. Connects to all nodes
+# 2. Assigns hash slots (0-16383) to each node  
+# 3. Each node saves cluster config to disk (nodes-XXXX.conf)
+# 4. EXITS - nothing keeps running!
+# 5. Cluster state is now PERSISTENT - survives restarts!
+```
+
+**How Redis Cluster Actually Works:**
+
+🔧 **Setup Phase** (one-time only):
+- CLI creates cluster and assigns hash slots (0-16383)
+- Each node saves cluster config to disk (`nodes-7001.conf`, `nodes-7002.conf`, etc.)
+- CLI command completes and exits
+- **Cluster configuration is now persistent!**
+
+🚀 **Runtime Phase** (automatic):
+- Each Redis node runs independently via systemctl
+- Nodes communicate via cluster bus (port + 10000) 
+- Automatic failover, resharding, etc.
+- **No external process needed!**
+
+🔄 **After Restart Behavior** (automatic):
+- Node reads its saved cluster config from disk
+- Rejoins existing cluster automatically  
+- **NO need to run cluster create again!**
+- Cluster topology maintained across restarts
+
+**Example - What happens after restart:**
+```bash
+# 1. Initially create cluster (ONCE)
+redis-cli --cluster create 192.168.1.184:7001 192.168.1.187:7002 192.168.1.190:7003 --cluster-replicas 0
+# Creates: nodes-7001.conf, nodes-7002.conf, nodes-7003.conf
+
+# 2. Later, restart any node
+sudo systemctl restart redis-server  # On cpu-node1
+
+# 3. Node automatically rejoins cluster (reads nodes-7001.conf)
+redis-cli -h 192.168.1.184 -p 7001 cluster nodes
+# Shows: All 3 nodes still in cluster, hash slots preserved
+
+# 4. Even restart ALL nodes - cluster persists!
+# Each node reads its config file and rejoins automatically
+```
+
+**Cluster Config Files (auto-managed by Redis):**
+```bash
+# These files are created automatically and persist across restarts
+/var/lib/redis/nodes-7001.conf  # On cpu-node1
+/var/lib/redis/nodes-7002.conf  # On cpu-node2  
+/var/lib/redis/nodes-7003.conf  # On worker-node3
+
+# Example content (don't edit manually):
+# node-id ip:port flags master/slave master-id ping-pong-time connected epoch slots
+```
+
+**Cluster Client Usage:**
+```bash
+# Connect to any cluster node - it handles routing automatically
+redis-cli -c -h 192.168.1.184 -p 7001
+> set key1 value1
+-> Redirected to slot [9842] located at 192.168.1.187:7002
+OK
+
+> get key1  
+-> Redirected to slot [9842] located at 192.168.1.187:7002
+"value1"
+```
+
+**Application Client:**
+```python
+from rediscluster import RedisCluster
+
+# Connect to cluster (any nodes)
+startup_nodes = [
+    {"host": "192.168.1.184", "port": "7001"},
+    {"host": "192.168.1.187", "port": "7002"},
+    {"host": "192.168.1.190", "port": "7003"}
+]
+
+rc = RedisCluster(startup_nodes=startup_nodes, decode_responses=True)
+
+# Use normally - cluster handles sharding automatically
+rc.set('key1', 'value1')
+value = rc.get('key1')  # Automatically routed to correct node
 ```
 
 ### Option D: Redis Client Only (Like gpu-node)
@@ -800,10 +1010,10 @@ sudo ufw allow 6379/tcp          # Redis (Options A, D)
 sudo ufw reload
 
 # Test connection (replace IP and password)
-redis-cli -h 192.168.1.XXX -p 6379 -a your-password ping
+redis-cli -h 192.168.1.190 -p 6379 -a your-password ping
 
 # For replicas (Option A), verify replication:
-redis-cli -h 192.168.1.XXX -a your-password info replication
+redis-cli -h 192.168.1.190 -a your-password info replication
 ```
 
 **⚠️ Please provide:**
