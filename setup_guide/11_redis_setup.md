@@ -30,6 +30,18 @@ Redis (Remote Dictionary Server) is an open-source, in-memory data structure sto
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
+## 🚀 CPU-NODE1 SETUP OVERVIEW
+
+**Complete setup requires 5 main steps - follow in order:**
+
+1. **📦 Install Redis** → Install packages and verify
+2. **⚙️ Configure Redis** → Choose ONE configuration method (A, B, or C)  
+3. **🖥️ System Optimization** → Choose ONE system method (A or B)
+4. **📁 Setup Directories** → Create required directories and permissions  
+5. **🔥 Start & Test** → Enable services and verify everything works
+
+---
+
 ## Step 1: Redis Installation (cpu-node1)
 
 ```bash
@@ -46,199 +58,145 @@ redis-cli --version
 
 ## Step 2: Redis Configuration
 
-### Complete Redis Configuration File
+⚠️ **IMPORTANT: Choose ONE configuration method below. Do NOT mix methods!**
 
-**Important:** Before modifying your Redis configuration, always create a backup:
+### Prerequisites - Backup First (REQUIRED)
 
 ```bash
-# Create backup of current configuration
+# ALWAYS create backup first
 sudo cp /etc/redis/redis.conf /etc/redis/redis.conf.backup.$(date +%Y%m%d_%H%M%S)
+```
 
+---
+
+### METHOD A: Manual Configuration (Recommended for Learning)
+
+**Use this if:** You want to understand each setting and customize manually.
+
+```bash
 # Edit the configuration file
 sudo nano /etc/redis/redis.conf
 ```
 
-### Option 1: Use Current System Configuration (Recommended)
+**Find and modify these sections (use Ctrl+W to search):**
 
-Your current Redis installation already has a complete and properly configured `redis.conf` file. You can view the current configuration:
+1. **Network (search for "bind"):**
+```conf
+bind 0.0.0.0                    # Accept connections from any IP
+protected-mode no               # Disable protected mode when binding to 0.0.0.0
+port 6379                       # Default Redis port
+```
+
+2. **Security (search for "requirepass"):**
+```conf
+requirepass your-strong-password-here    # Set a strong password
+```
+
+3. **Memory (search for "maxmemory"):**
+```conf
+# Uncomment and set these lines:
+maxmemory 2gb                   # Adjust based on your RAM
+maxmemory-policy allkeys-lru    # Eviction policy
+```
+
+4. **Persistence (search for "appendonly"):**
+```conf
+appendonly yes                  # Enable AOF for durability
+appendfsync everysec           # Sync every second (balanced performance/safety)
+```
+
+---
+
+### METHOD B: Automated Configuration (Recommended for Production)
+
+**Use this if:** You want quick, consistent setup without manual editing.
 
 ```bash
-# View current configuration
-sudo cat /etc/redis/redis.conf | head -50
+# Run these commands in sequence (DO NOT run if you used Method A!)
 
-# See the complete configuration structure
-sudo less /etc/redis/redis.conf
-```
-
-### Option 2: Key Configuration Settings to Customize
-
-Since your current configuration is already comprehensive (Redis 7.0.15), you only need to modify specific sections for your setup. Here are the key settings to customize:
-
-```bash
-# Edit specific settings in the existing config
-sudo nano /etc/redis/redis.conf
-```
-
-**Critical settings to modify:**
-
-1. **Network Configuration (around line 90-120):**
-```conf
-# CUSTOMIZE: Change to 0.0.0.0 to accept connections from any IP
-bind 0.0.0.0
-
-# CUSTOMIZE: Set to 'no' if binding to 0.0.0.0  
-protected-mode no
-
-# Port configuration
-port 6379
-```
-
-2. **Security Configuration (around line 790-810):**
-```conf
-# CUSTOMIZE: Set a strong password for Redis authentication
-requirepass your-strong-redis-password-here
-```
-
-3. **Memory Management (around line 1020-1040):**
-```conf
-# CUSTOMIZE: Set based on available system RAM (leave some for OS)
-# Uncomment and set appropriate value based on your RAM
-maxmemory 2gb
-
-# Memory eviction policy
-maxmemory-policy allkeys-lru
-```
-
-4. **Persistence Configuration (around line 400-450):**
-```conf
-# CUSTOMIZE: Adjust save points based on your needs
-save 3600 1 300 100 60 10000
-
-# Enable AOF persistence for better durability
-appendonly yes
-appendfsync everysec
-```
-
-5. **For Replica Setup (uncomment when setting up replica):**
-```conf
-# CUSTOMIZE for replica setup: 
-# replicaof 192.168.1.184 6379
-# masterauth your-redis-password
-```
-
-### Configuration Template for Direct Replacement
-
-If you prefer to replace the entire configuration file, here's a production-ready template based on Redis 7.0+ defaults:
-
-```bash
-# Download Redis 7.0+ default configuration
-wget https://raw.githubusercontent.com/redis/redis/7.0/redis.conf -O /tmp/redis.conf.template
-
-# Or create from your current config
-sudo cp /etc/redis/redis.conf /tmp/redis-template.conf
-
-# Customize the template, then replace
-sudo cp /tmp/redis-template.conf /etc/redis/redis.conf
-```
-
-### Quick Configuration Commands
-
-For quick configuration without manual editing:
-
-```bash
-# 1. Set Redis to accept external connections
+# 1. Network configuration
 sudo sed -i 's/^bind 127.0.0.1 -::1/bind 0.0.0.0/' /etc/redis/redis.conf
 sudo sed -i 's/^protected-mode yes/protected-mode no/' /etc/redis/redis.conf
 
-# 2. Set password (replace 'your-password' with actual password)
-sudo sed -i 's/^# requirepass foobared/requirepass your-password/' /etc/redis/redis.conf
+# 2. Security configuration
+sudo sed -i 's/^# requirepass foobared/requirepass your-strong-password/' /etc/redis/redis.conf
 
-# 3. Set memory limit (adjust 2gb as needed)
-echo "maxmemory 2gb" | sudo tee -a /etc/redis/redis.conf
-echo "maxmemory-policy allkeys-lru" | sudo tee -a /etc/redis/redis.conf
+# 3. Memory configuration (only add if not already present)
+if ! grep -q "^maxmemory" /etc/redis/redis.conf; then
+    echo "maxmemory 2gb" | sudo tee -a /etc/redis/redis.conf
+    echo "maxmemory-policy allkeys-lru" | sudo tee -a /etc/redis/redis.conf
+fi
 
-# 4. Enable AOF persistence
+# 4. Persistence configuration
 sudo sed -i 's/^appendonly no/appendonly yes/' /etc/redis/redis.conf
-
-# 5. Apply changes
-sudo systemctl restart redis-server
 ```
 
-### Verify Configuration
+---
 
-After making changes, verify the configuration is correct:
+### METHOD C: Template Replacement (Advanced Users Only)
+
+**Use this if:** You have a specific template or want to completely replace the config.
+
+```bash
+# Get official Redis template
+wget https://raw.githubusercontent.com/redis/redis/7.0/redis.conf -O /tmp/redis.conf.template
+
+# Customize the template as needed, then replace
+sudo cp /tmp/redis.conf.template /etc/redis/redis.conf
+
+# Then edit for your specific settings
+sudo nano /etc/redis/redis.conf
+```
+
+---
+
+### Verification (Run After ANY Method Above)
 
 ```bash
 # Test configuration syntax
 sudo redis-server /etc/redis/redis.conf --test-config
 
-# Check if Redis starts successfully
+# Restart Redis with new config
 sudo systemctl restart redis-server
+
+# Check service status
 sudo systemctl status redis-server
 
-# Test connection
+# Test connection (replace 'your-password' with actual password)
 redis-cli -h 192.168.1.184 -a your-password ping
 
-# View current settings
-redis-cli -h 192.168.1.184 -a your-password CONFIG GET "*"
+# Should return: PONG
 ```
 
 ## Step 3: System Configuration
 
-### Current System State Analysis
+⚠️ **IMPORTANT: Choose ONE system configuration method below. Do NOT mix methods!**
 
-First, let's check the current system configuration:
+### Check Current System State (REQUIRED - Run First)
 
 ```bash
 # Check current kernel parameters
-sudo sysctl vm.overcommit_memory net.core.somaxconn vm.swappiness
+echo "=== Current System State ==="
+echo "vm.overcommit_memory = $(sysctl -n vm.overcommit_memory)"
+echo "net.core.somaxconn = $(sysctl -n net.core.somaxconn)"
+echo "vm.swappiness = $(sysctl -n vm.swappiness)"
+echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
+echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
 
-# Check transparent huge pages status
-cat /sys/kernel/mm/transparent_hugepage/enabled
-cat /sys/kernel/mm/transparent_hugepage/defrag
-
-# Check existing sysctl configurations
-ls -la /etc/sysctl.d/
-cat /etc/sysctl.conf | grep -v '^#' | grep -v '^$'
+# Check existing configurations
+echo "=== Existing Configuration Files ==="
+ls -la /etc/sysctl.d/ | grep -v total
 ```
 
-### Option 1: Add Redis-Specific Configuration File (Recommended)
+---
 
-Create a dedicated Redis configuration file in `/etc/sysctl.d/`:
+### METHOD A: Manual Configuration (Step-by-Step)
 
+**Use this if:** You want to understand each step and have full control.
+
+#### A1. System Limits Configuration
 ```bash
-# Create Redis-specific sysctl configuration
-sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
-# Redis optimization settings
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-
-# Redis memory management
-vm.swappiness = 1
-EOF
-```
-
-### Option 2: Add to Main sysctl.conf
-
-Your current `/etc/sysctl.conf` already has Kafka optimizations. Add Redis settings:
-
-```bash
-# Backup current sysctl.conf
-sudo cp /etc/sysctl.conf /etc/sysctl.conf.backup.$(date +%Y%m%d_%H%M%S)
-
-# Add Redis settings to sysctl.conf
-sudo tee -a /etc/sysctl.conf > /dev/null <<EOF
-
-# Redis optimization settings
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-EOF
-```
-
-### Configure System Limits
-
-```bash
-# Increase system limits for Redis user
+# Configure system limits for Redis
 sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
 redis soft nofile 65535
 redis hard nofile 65535
@@ -247,25 +205,36 @@ redis hard nproc 65535
 EOF
 ```
 
-### Disable Transparent Huge Pages
+#### A2. Kernel Parameters (Choose ONE option below)
 
-**Current Status Check:**
+**Option A2a: Dedicated Redis Config File (Recommended)**
 ```bash
-# Current settings (should show current values)
-echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
-echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
+sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
+# Redis optimization settings
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+vm.swappiness = 1
+EOF
 ```
 
-**Temporary Disable (immediate effect):**
+**Option A2b: Add to Main sysctl.conf (if you prefer centralized config)**
 ```bash
-# Disable temporarily (will reset on reboot)
-echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
-echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+# Backup first
+sudo cp /etc/sysctl.conf /etc/sysctl.conf.backup.$(date +%Y%m%d_%H%M%S)
+
+# Add Redis settings
+sudo tee -a /etc/sysctl.conf > /dev/null <<EOF
+
+# Redis optimization settings
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+EOF
 ```
 
-**Permanent Disable (Method 1 - systemd service):**
+#### A3. Disable Transparent Huge Pages (Choose ONE method)
+
+**Method A3a: systemd Service (Recommended)**
 ```bash
-# Create systemd service to disable THP on boot
 sudo tee /etc/systemd/system/disable-thp.service > /dev/null <<EOF
 [Unit]
 Description=Disable Transparent Huge Pages (THP)
@@ -282,19 +251,16 @@ ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
 WantedBy=basic.target
 EOF
 
-# Enable the service
 sudo systemctl daemon-reload
 sudo systemctl enable disable-thp.service
 ```
 
-**Permanent Disable (Method 2 - rc.local):**
+**Method A3b: rc.local (Alternative)**
 ```bash
-# Alternative: Use rc.local (if it exists)
 if [ -f /etc/rc.local ]; then
     sudo cp /etc/rc.local /etc/rc.local.backup
     sudo sed -i '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag' /etc/rc.local
 else
-    # Create rc.local if it doesn't exist
     sudo tee /etc/rc.local > /dev/null <<EOF
 #!/bin/bash
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
@@ -305,83 +271,38 @@ EOF
 fi
 ```
 
-### Apply All Changes
-
+#### A4. Apply Changes
 ```bash
 # Apply sysctl changes
 sudo sysctl -p
-sudo sysctl -p /etc/sysctl.d/99-redis.conf  # if using dedicated file
+if [ -f /etc/sysctl.d/99-redis.conf ]; then
+    sudo sysctl -p /etc/sysctl.d/99-redis.conf
+fi
 
 # Disable THP immediately
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
-# Start THP disable service (if using systemd method)
-sudo systemctl start disable-thp.service
+# Start THP service (if using systemd method)
+if [ -f /etc/systemd/system/disable-thp.service ]; then
+    sudo systemctl start disable-thp.service
+fi
 ```
 
-### Verify Configuration
+---
+
+### METHOD B: Automated Script (One-Shot Setup)
+
+**Use this if:** You want everything done automatically with sensible defaults.
 
 ```bash
-# Verify sysctl settings
-echo "=== Kernel Parameters ==="
-sysctl vm.overcommit_memory net.core.somaxconn vm.swappiness
+# Save this as redis-system-setup.sh and run it
+# DO NOT run this if you used Method A!
 
-# Verify THP is disabled
-echo "=== Transparent Huge Pages ==="
-echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
-echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
-
-# Verify Redis user and limits
-echo "=== Redis User Configuration ==="
-getent passwd redis
-echo "Redis user shell (should be /usr/sbin/nologin for security): $(getent passwd redis | cut -d: -f7)"
-
-echo "=== Redis Process and Ownership ==="
-ps aux | grep redis | grep -v grep
-sudo ls -la /var/lib/redis
-
-echo "=== System Limits for Redis ==="
-# Note: Redis user has /usr/sbin/nologin shell (correct for security)
-# Check limits via systemd service instead
-echo "Redis service limits:"
-sudo systemctl show redis-server | grep -E "(LimitNOFILE|LimitNPROC)"
-
-# Check Redis warnings
-redis-cli -h 127.0.0.1 info server | grep -E "(redis_version|uptime)"
-```
-
-### Expected Output After Configuration
-
-After proper configuration, you should see:
-```
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-vm.swappiness = 1
-THP enabled: always madvise [never]
-THP defrag: always defer defer+madvise madvise [never]
-```
-
-### Quick Configuration Script
-
-For automated setup, you can run all Redis system optimizations at once:
-
-```bash
 #!/bin/bash
-# Redis System Optimization Script
+echo "=== Redis System Optimization (Automated) ==="
 
-echo "=== Redis System Configuration ==="
-
-# Create Redis sysctl configuration
-echo "Creating Redis sysctl configuration..."
-sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
-# Redis optimization settings
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-vm.swappiness = 1
-EOF
-
-# Configure system limits
+# System limits
 echo "Configuring system limits..."
 sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
 redis soft nofile 65535
@@ -390,7 +311,16 @@ redis soft nproc 65535
 redis hard nproc 65535
 EOF
 
-# Create THP disable service
+# Kernel parameters (dedicated file)
+echo "Configuring kernel parameters..."
+sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
+# Redis optimization settings
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+vm.swappiness = 1
+EOF
+
+# THP disable service
 echo "Creating THP disable service..."
 sudo tee /etc/systemd/system/disable-thp.service > /dev/null <<EOF
 [Unit]
@@ -408,18 +338,41 @@ ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
 WantedBy=basic.target
 EOF
 
-# Enable services and apply changes
-echo "Applying configuration..."
+# Apply all changes
+echo "Applying changes..."
 sudo systemctl daemon-reload
 sudo systemctl enable disable-thp.service
 sudo systemctl start disable-thp.service
 sudo sysctl -p /etc/sysctl.d/99-redis.conf
 
-echo "=== Configuration Complete ==="
-echo "Current values:"
-sysctl vm.overcommit_memory net.core.somaxconn vm.swappiness
-echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
-echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
+# Disable THP immediately
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
+echo "=== Configuration Complete! ==="
+```
+
+---
+
+### Verification (Run After ANY Method Above)
+
+```bash
+# Verify all settings
+echo "=== Final System Configuration ==="
+echo "vm.overcommit_memory = $(sysctl -n vm.overcommit_memory)  (should be 1)"
+echo "net.core.somaxconn = $(sysctl -n net.core.somaxconn)     (should be 65535)"  
+echo "vm.swappiness = $(sysctl -n vm.swappiness)               (should be 1)"
+echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)   (should show [never])"
+echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)     (should show [never])"
+
+echo "=== Redis User Configuration ==="
+getent passwd redis
+echo "Redis service limits:"
+sudo systemctl show redis-server | grep -E "(LimitNOFILE|LimitNPROC)"
+
+echo "=== Redis Process Status ==="
+ps aux | grep redis | grep -v grep
+sudo ls -la /var/lib/redis
 ```
 
 ## Step 4: Create Redis Directories and Permissions
@@ -447,15 +400,28 @@ sudo chmod 755 /var/run/redis
 # Start Redis service
 sudo systemctl start redis-server
 
-# Enable auto-start
+# Enable auto-start on boot
 sudo systemctl enable redis-server
 
-# Check status
+# Check status (should show "active (running)")
 sudo systemctl status redis-server
 
-# Test Redis connection
+# Test connection (replace 'your-redis-password' with actual password)
 redis-cli -h 192.168.1.184 -a your-redis-password ping
+
+# Should return: PONG
 ```
+
+---
+
+## ✅ CPU-NODE1 SETUP COMPLETE!
+
+If all tests pass above, your Redis master is now ready. Next steps:
+- **Step 6**: Set up cpu-node2 as a replica (optional but recommended)
+- **Step 7**: Set up worker-node3 (choose role based on your needs)
+- **Step 8+**: Configure monitoring, backups, and integration
+
+---
 
 ## Step 6: Redis Replica Setup (cpu-node2)
 
@@ -611,61 +577,31 @@ sudo apt install -y redis-tools
 redis-cli -h 192.168.1.184 -p 6379 -a your-redis-password ping
 ```
 
-### Complete Setup Steps (after choosing role)
+### Common Setup Steps (after choosing role above)
 
-1. **System Optimization** (same as cpu-node1):
+⚠️ **Note**: For any Redis server role (Options A, B, or C), you also need to:
+
+1. **System Optimization**: Follow **Step 3** from cpu-node1 setup (choose Method A or B)
+2. **Directory Setup**: Run **Step 4** from cpu-node1 setup  
+3. **Service Management**: Run **Step 5** from cpu-node1 setup
+
+### Worker-Node3 Specific Commands
+
+After completing the common steps above:
+
 ```bash
-# Apply Redis system optimizations
-sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
-vm.overcommit_memory = 1
-net.core.somaxconn = 65535
-vm.swappiness = 1
-EOF
-
-# System limits
-sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
-redis soft nofile 65535
-redis hard nofile 65535
-redis soft nproc 65535
-redis hard nproc 65535
-EOF
-
-# Disable THP
-echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
-echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
-```
-
-2. **Start Services**:
-```bash
-sudo systemctl start redis-server  # or redis-sentinel for Option B
-sudo systemctl enable redis-server  # or redis-sentinel for Option B
-```
-
-3. **Firewall Configuration**:
-```bash
-# For Redis
-sudo ufw allow 6379/tcp
-
-# For Redis Sentinel (if using Option B)  
-sudo ufw allow 26379/tcp
-
-# For Redis Cluster (if using Option C)
-sudo ufw allow 7003/tcp
-sudo ufw allow 17003/tcp  # Cluster bus port
-
+# Firewall configuration (adjust ports based on chosen role)
+sudo ufw allow 6379/tcp          # Redis (Options A, D)
+# sudo ufw allow 26379/tcp       # Redis Sentinel (Option B)  
+# sudo ufw allow 7003/tcp        # Redis Cluster (Option C)
+# sudo ufw allow 17003/tcp       # Cluster bus port (Option C)
 sudo ufw reload
-```
 
-4. **Verify Setup**:
-```bash
-# Check service status
-sudo systemctl status redis-server
+# Test connection (replace IP and password)
+redis-cli -h 192.168.1.XXX -p 6379 -a your-password ping
 
-# Test connection
-redis-cli -h 192.168.1.XXX -p 6379 -a your-redis-password ping
-
-# Check replication (if replica)
-redis-cli -h 192.168.1.XXX -a your-redis-password info replication
+# For replicas (Option A), verify replication:
+redis-cli -h 192.168.1.XXX -a your-password info replication
 ```
 
 **⚠️ Please provide:**
