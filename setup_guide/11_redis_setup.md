@@ -7,8 +7,10 @@ Redis will be set up on cpu-node1 as a high-performance in-memory data store, ca
 Redis (Remote Dictionary Server) is an open-source, in-memory data structure store used as a database, cache, message broker, and streaming engine. It supports various data structures such as strings, hashes, lists, sets, sorted sets with range queries, bitmaps, hyperloglogs, geospatial indexes, and streams.
 
 ## Machine Configuration
-- **Primary Node**: cpu-node1 (192.168.1.184)
-- **Replica Node**: cpu-node2 (192.168.1.187) - for high availability
+- **Primary Node**: cpu-node1 (192.168.1.184) - Redis Master
+- **Replica Node**: cpu-node2 (192.168.1.187) - Redis Replica for high availability  
+- **Worker Node**: worker-node3 (IP: TBD) - Additional Redis node (role TBD)
+- **Client Node**: gpu-node (192.168.1.79) - Redis client for ML workloads
 - **Integration**: Works with all existing components
 
 ## Prerequisites
@@ -19,13 +21,13 @@ Redis (Remote Dictionary Server) is an open-source, in-memory data structure sto
 
 ## Architecture Overview
 ```
-┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│    cpu-node1        │    │    cpu-node2        │    │   gpu-node          │
-│  - Redis Master     │────│  - Redis Replica    │    │  - Redis Client     │
-│  - PostgreSQL       │    │  - Neo4j            │    │  - ML Feature Store │
-│  - Kafka Broker     │    │  - Other Services   │    │  - Model Serving    │
-│  192.168.1.184      │    │  192.168.1.187      │    │  192.168.1.79       │
-└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│    cpu-node1        │    │    cpu-node2        │    │   worker-node3      │    │   gpu-node          │
+│  - Redis Master     │────│  - Redis Replica    │────│  - Redis Node       │    │  - Redis Client     │
+│  - PostgreSQL       │    │  - Neo4j            │    │  - (Role TBD)       │    │  - ML Feature Store │
+│  - Kafka Broker     │    │  - Other Services   │    │  - Other Services   │    │  - Model Serving    │
+│  192.168.1.184      │    │  192.168.1.187      │    │  192.168.1.XXX      │    │  192.168.1.79       │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
 ## Step 1: Redis Installation (cpu-node1)
@@ -330,9 +332,20 @@ echo "=== Transparent Huge Pages ==="
 echo "THP enabled: $(cat /sys/kernel/mm/transparent_hugepage/enabled)"
 echo "THP defrag: $(cat /sys/kernel/mm/transparent_hugepage/defrag)"
 
-# Verify limits
-echo "=== Redis User Limits ==="
-sudo su - redis -c 'ulimit -n; ulimit -u' 2>/dev/null || echo "Redis user not available for testing"
+# Verify Redis user and limits
+echo "=== Redis User Configuration ==="
+getent passwd redis
+echo "Redis user shell (should be /usr/sbin/nologin for security): $(getent passwd redis | cut -d: -f7)"
+
+echo "=== Redis Process and Ownership ==="
+ps aux | grep redis | grep -v grep
+sudo ls -la /var/lib/redis
+
+echo "=== System Limits for Redis ==="
+# Note: Redis user has /usr/sbin/nologin shell (correct for security)
+# Check limits via systemd service instead
+echo "Redis service limits:"
+sudo systemctl show redis-server | grep -E "(LimitNOFILE|LimitNPROC)"
 
 # Check Redis warnings
 redis-cli -h 127.0.0.1 info server | grep -E "(redis_version|uptime)"
@@ -480,7 +493,188 @@ sudo systemctl start redis-server
 sudo systemctl enable redis-server
 ```
 
-## Step 7: Firewall Configuration
+## Step 7: Worker-Node3 Redis Setup
+
+**Please specify worker-node3 details:**
+- **IP Address**: What is the IP address of worker-node3?  
+- **Role**: What role should worker-node3 serve?
+
+### Option A: Additional Redis Replica (High Availability)
+
+If worker-node3 should be another Redis replica:
+
+```bash
+# On worker-node3 (IP: 192.168.1.XXX)
+sudo apt update
+sudo apt install -y redis-server redis-tools
+
+# Configure as replica
+sudo nano /etc/redis/redis.conf
+```
+
+Add/modify these settings:
+```conf
+# Network configuration
+bind 0.0.0.0
+protected-mode no
+port 6379
+
+# Replica configuration
+replicaof 192.168.1.184 6379
+masterauth your-redis-password
+requirepass your-redis-password
+
+# Data directory
+dir /var/lib/redis
+
+# Logging
+logfile /var/log/redis/redis-server.log
+```
+
+### Option B: Redis Sentinel (Automatic Failover)
+
+If worker-node3 should run Redis Sentinel for automatic failover:
+
+```bash
+# On worker-node3
+sudo apt update
+sudo apt install -y redis-sentinel
+
+# Configure Sentinel
+sudo nano /etc/redis/sentinel.conf
+```
+
+Sentinel configuration:
+```conf
+# Sentinel port
+port 26379
+
+# Monitor master
+sentinel monitor mymaster 192.168.1.184 6379 2
+
+# Authentication
+sentinel auth-pass mymaster your-redis-password
+
+# Failover configuration
+sentinel down-after-milliseconds mymaster 30000
+sentinel parallel-syncs mymaster 1
+sentinel failover-timeout mymaster 180000
+
+# Notification scripts (optional)
+# sentinel notification-script mymaster /var/redis/notify.sh
+```
+
+### Option C: Redis Cluster Node (Horizontal Scaling)
+
+If you want to set up Redis Cluster for horizontal scaling:
+
+```bash
+# On all nodes (cpu-node1, cpu-node2, worker-node3)
+# Modify redis.conf for cluster mode
+
+sudo nano /etc/redis/redis.conf
+```
+
+Add cluster configuration:
+```conf
+# Enable cluster mode
+cluster-enabled yes
+cluster-config-file nodes.conf
+cluster-node-timeout 15000
+
+# Different ports for each node
+# cpu-node1: port 7001
+# cpu-node2: port 7002  
+# worker-node3: port 7003
+
+# Network configuration
+bind 0.0.0.0
+protected-mode no
+```
+
+Create cluster:
+```bash
+# After configuring all nodes
+redis-cli --cluster create 192.168.1.184:7001 192.168.1.187:7002 192.168.1.XXX:7003 --cluster-replicas 0
+```
+
+### Option D: Redis Client Only (Like gpu-node)
+
+If worker-node3 should only be a Redis client:
+
+```bash
+# On worker-node3
+sudo apt update
+sudo apt install -y redis-tools
+
+# Test connection
+redis-cli -h 192.168.1.184 -p 6379 -a your-redis-password ping
+```
+
+### Complete Setup Steps (after choosing role)
+
+1. **System Optimization** (same as cpu-node1):
+```bash
+# Apply Redis system optimizations
+sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+vm.swappiness = 1
+EOF
+
+# System limits
+sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
+redis soft nofile 65535
+redis hard nofile 65535
+redis soft nproc 65535
+redis hard nproc 65535
+EOF
+
+# Disable THP
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+```
+
+2. **Start Services**:
+```bash
+sudo systemctl start redis-server  # or redis-sentinel for Option B
+sudo systemctl enable redis-server  # or redis-sentinel for Option B
+```
+
+3. **Firewall Configuration**:
+```bash
+# For Redis
+sudo ufw allow 6379/tcp
+
+# For Redis Sentinel (if using Option B)  
+sudo ufw allow 26379/tcp
+
+# For Redis Cluster (if using Option C)
+sudo ufw allow 7003/tcp
+sudo ufw allow 17003/tcp  # Cluster bus port
+
+sudo ufw reload
+```
+
+4. **Verify Setup**:
+```bash
+# Check service status
+sudo systemctl status redis-server
+
+# Test connection
+redis-cli -h 192.168.1.XXX -p 6379 -a your-redis-password ping
+
+# Check replication (if replica)
+redis-cli -h 192.168.1.XXX -a your-redis-password info replication
+```
+
+**⚠️ Please provide:**
+1. **Worker-node3 IP address**
+2. **Preferred setup option** (A, B, C, or D)
+
+I can then update the documentation with specific commands for your chosen configuration.
+
+## Step 8: Firewall Configuration
 
 ```bash
 # On both nodes, open Redis port
@@ -488,7 +682,7 @@ sudo ufw allow 6379/tcp
 sudo ufw reload
 ```
 
-## Step 8: Redis Monitoring Setup
+## Step 9: Redis Monitoring Setup
 
 ### Create monitoring script:
 ```python
@@ -586,7 +780,7 @@ Make it executable:
 sudo chmod +x /opt/redis-monitor.py
 ```
 
-## Step 9: Integration Examples
+## Step 10: Integration Examples
 
 ### Redis with Python (Feature Store):
 ```python
@@ -827,7 +1021,7 @@ kafka_thread.start()
 stream_thread.start()
 ```
 
-## Step 10: Redis for ML Model Serving
+## Step 11: Redis for ML Model Serving
 
 ```python
 # ML Model serving with Redis
@@ -963,7 +1157,7 @@ prediction = model_server.predict('user_churn_prediction', test_features)
 print(f"Prediction: {prediction}")
 ```
 
-## Step 11: Performance Tuning and Optimization
+## Step 12: Performance Tuning and Optimization
 
 ### Memory Optimization:
 ```bash
@@ -986,7 +1180,7 @@ redis-benchmark -h 192.168.1.184 -p 6379 -a your-redis-password -n 100000 -d 3 -
 redis-benchmark -h 192.168.1.184 -p 6379 -a your-redis-password -n 100000 -r 10000 -d 1000
 ```
 
-## Step 12: Backup and Recovery
+## Step 13: Backup and Recovery
 
 ### Backup Script:
 ```bash
@@ -1040,7 +1234,7 @@ sudo chmod +x /opt/redis-backup.sh
 # 0 3 * * * /opt/redis-backup.sh
 ```
 
-## Step 13: Troubleshooting
+## Step 14: Troubleshooting
 
 ### Common Issues and Solutions:
 
