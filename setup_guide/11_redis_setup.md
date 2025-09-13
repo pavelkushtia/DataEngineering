@@ -153,19 +153,23 @@ sudo nano /etc/redis/redis.conf
 ### Verification (Run After ANY Method Above)
 
 ```bash
-# Test configuration syntax
-sudo redis-server /etc/redis/redis.conf --test-config
-
-# Restart Redis with new config
+# Method 1: Restart Redis to apply configuration changes
 sudo systemctl restart redis-server
 
-# Check service status
+# Method 2: Verify Redis is running with correct settings
 sudo systemctl status redis-server
+# Check the process line - should show "0.0.0.0:6379" not "127.0.0.1:6379"
 
-# Test connection (replace 'your-password' with actual password)
+# Method 3: Check for configuration errors in logs if restart fails
+sudo journalctl -u redis-server --no-pager -n 20
+
+# Method 4: Test connection (replace 'your-password' with actual password)
 redis-cli -h 192.168.1.184 -a your-password ping
-
 # Should return: PONG
+
+# Method 5: Verify configuration settings are applied correctly
+redis-cli -h 192.168.1.184 -a your-password CONFIG GET bind
+redis-cli -h 192.168.1.184 -a your-password CONFIG GET maxmemory
 ```
 
 ## Step 3: System Configuration
@@ -425,38 +429,200 @@ If all tests pass above, your Redis master is now ready. Next steps:
 
 ## Step 6: Redis Replica Setup (cpu-node2)
 
-### Install Redis on cpu-node2:
+⚠️ **Important**: Replica needs the same optimizations as master + replica-specific settings
+
+### Step 6.1: Install Redis on cpu-node2
 ```bash
 # On cpu-node2
 sudo apt update
 sudo apt install -y redis-server redis-tools
 ```
 
-### Configure Redis replica:
+### Step 6.2: Configure Redis Replica
+
+**Create backup first:**
+```bash
+sudo cp /etc/redis/redis.conf /etc/redis/redis.conf.backup.$(date +%Y%m%d_%H%M%S)
+```
+
+**Configure replica (choose Method A or B - same as cpu-node1):**
+
+#### Method A: Manual Configuration (Edit redis.conf)
 ```bash
 sudo nano /etc/redis/redis.conf
 ```
 
-Add/modify these settings:
-```conf
-# Replica configuration
-replicaof 192.168.1.184 6379
-masterauth your-redis-password
-requirepass your-redis-password
+**Find and modify all these sections:**
 
-# Same network and general settings as master
+1. **Network Configuration:**
+```conf
 bind 0.0.0.0
 protected-mode no
 port 6379
+```
 
-# Different data directory
+2. **Replica-Specific Settings:**
+```conf
+replicaof 192.168.1.184 6379
+masterauth your-strong-password-here
+requirepass your-strong-password-here
+```
+
+3. **Memory Management (same as master):**
+```conf
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+```
+
+4. **Persistence (same as master):**
+```conf
+appendonly yes
+appendfsync everysec
+```
+
+5. **Logging:**
+```conf
+logfile /var/log/redis/redis-server.log
+```
+
+6. **Data Directory:**
+```conf
 dir /var/lib/redis
 ```
 
-Start the replica:
+#### Method B: Automated Configuration
 ```bash
+# Network settings
+sudo sed -i 's/^bind 127.0.0.1 -::1/bind 0.0.0.0/' /etc/redis/redis.conf
+sudo sed -i 's/^protected-mode yes/protected-mode no/' /etc/redis/redis.conf
+
+# Replica settings  
+echo "replicaof 192.168.1.184 6379" | sudo tee -a /etc/redis/redis.conf
+echo "masterauth your-strong-password" | sudo tee -a /etc/redis/redis.conf
+sudo sed -i 's/^# requirepass foobared/requirepass your-strong-password/' /etc/redis/redis.conf
+
+# Memory settings (only add if not already present)
+if ! grep -q "^maxmemory" /etc/redis/redis.conf; then
+    echo "maxmemory 2gb" | sudo tee -a /etc/redis/redis.conf
+    echo "maxmemory-policy allkeys-lru" | sudo tee -a /etc/redis/redis.conf
+fi
+
+# Persistence settings
+sudo sed -i 's/^appendonly no/appendonly yes/' /etc/redis/redis.conf
+```
+
+### Step 6.3: System Optimization (cpu-node2)
+
+**Apply same system optimizations as cpu-node1:**
+
+Choose **Method A (Manual)** OR **Method B (Automated)** from cpu-node1 Step 3:
+
+#### Quick System Setup (same as cpu-node1 Method B):
+```bash
+# System limits
+sudo tee -a /etc/security/limits.conf > /dev/null <<EOF
+redis soft nofile 65535
+redis hard nofile 65535
+redis soft nproc 65535
+redis hard nproc 65535
+EOF
+
+# Kernel parameters
+sudo tee /etc/sysctl.d/99-redis.conf > /dev/null <<EOF
+vm.overcommit_memory = 1
+net.core.somaxconn = 65535
+vm.swappiness = 1
+EOF
+
+# THP disable service
+sudo tee /etc/systemd/system/disable-thp.service > /dev/null <<EOF
+[Unit]
+Description=Disable Transparent Huge Pages (THP)
+DefaultDependencies=false
+After=sysinit.target local-fs.target
+Before=redis-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+
+[Install]
+WantedBy=basic.target
+EOF
+
+# Apply changes
+sudo systemctl daemon-reload
+sudo systemctl enable disable-thp.service
+sudo systemctl start disable-thp.service
+sudo sysctl -p /etc/sysctl.d/99-redis.conf
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+```
+
+### Step 6.4: Create Directories and Set Permissions
+```bash
+# Create necessary directories (same as cpu-node1)
+sudo mkdir -p /var/lib/redis
+sudo mkdir -p /var/log/redis
+sudo mkdir -p /var/run/redis
+
+# Set ownership
+sudo chown redis:redis /var/lib/redis
+sudo chown redis:redis /var/log/redis
+sudo chown redis:redis /var/run/redis
+
+# Set permissions
+sudo chmod 755 /var/lib/redis
+sudo chmod 755 /var/log/redis
+sudo chmod 755 /var/run/redis
+```
+
+### Step 6.5: Start and Verify Replica
+```bash
+# Test configuration by checking service status (no --test-config flag in Redis 7.0+)
+sudo systemctl status redis-server
+
+# Start replica
 sudo systemctl start redis-server
 sudo systemctl enable redis-server
+
+# Check service status
+sudo systemctl status redis-server
+
+# Test replica connection
+redis-cli -h 192.168.1.187 -a your-password ping
+
+# Verify replication is working
+redis-cli -h 192.168.1.187 -a your-password info replication
+
+# Test from master - should show connected replica
+redis-cli -h 192.168.1.184 -a your-password info replication
+```
+
+### Step 6.6: Firewall Configuration (cpu-node2)
+```bash
+# Open Redis port
+sudo ufw allow 6379/tcp
+sudo ufw reload
+```
+
+### Verification - Expected Output
+After setup, you should see:
+
+**On replica (192.168.1.187):**
+```
+role:slave
+master_host:192.168.1.184
+master_port:6379
+master_link_status:up
+```
+
+**On master (192.168.1.184):**
+```
+role:master
+connected_slaves:1
+slave0:ip=192.168.1.187,port=6379,state=online
 ```
 
 ## Step 7: Worker-Node3 Redis Setup
@@ -467,18 +633,25 @@ sudo systemctl enable redis-server
 
 ### Option A: Additional Redis Replica (High Availability)
 
-If worker-node3 should be another Redis replica:
+If worker-node3 should be another Redis replica, **follow the same comprehensive setup as cpu-node2:**
 
 ```bash
 # On worker-node3 (IP: 192.168.1.XXX)
 sudo apt update
 sudo apt install -y redis-server redis-tools
 
-# Configure as replica
+# Create backup first
+sudo cp /etc/redis/redis.conf /etc/redis/redis.conf.backup.$(date +%Y%m%d_%H%M%S)
+```
+
+**Complete replica configuration (same as cpu-node2 Step 6.2):**
+
+#### Method A: Manual Configuration
+```bash
 sudo nano /etc/redis/redis.conf
 ```
 
-Add/modify these settings:
+**Find and modify these sections:**
 ```conf
 # Network configuration
 bind 0.0.0.0
@@ -487,14 +660,37 @@ port 6379
 
 # Replica configuration
 replicaof 192.168.1.184 6379
-masterauth your-redis-password
-requirepass your-redis-password
+masterauth your-strong-password-here
+requirepass your-strong-password-here
 
-# Data directory
-dir /var/lib/redis
+# Memory management (same as master)
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+
+# Persistence (same as master)
+appendonly yes
+appendfsync everysec
 
 # Logging
 logfile /var/log/redis/redis-server.log
+
+# Data directory
+dir /var/lib/redis
+```
+
+#### Method B: Automated Configuration
+```bash
+# Apply same automated setup as cpu-node2 Step 6.2 Method B
+sudo sed -i 's/^bind 127.0.0.1 -::1/bind 0.0.0.0/' /etc/redis/redis.conf
+sudo sed -i 's/^protected-mode yes/protected-mode no/' /etc/redis/redis.conf
+echo "replicaof 192.168.1.184 6379" | sudo tee -a /etc/redis/redis.conf
+echo "masterauth your-strong-password" | sudo tee -a /etc/redis/redis.conf
+sudo sed -i 's/^# requirepass foobared/requirepass your-strong-password/' /etc/redis/redis.conf
+if ! grep -q "^maxmemory" /etc/redis/redis.conf; then
+    echo "maxmemory 2gb" | sudo tee -a /etc/redis/redis.conf
+    echo "maxmemory-policy allkeys-lru" | sudo tee -a /etc/redis/redis.conf
+fi
+sudo sed -i 's/^appendonly no/appendonly yes/' /etc/redis/redis.conf
 ```
 
 ### Option B: Redis Sentinel (Automatic Failover)
@@ -579,11 +775,17 @@ redis-cli -h 192.168.1.184 -p 6379 -a your-redis-password ping
 
 ### Common Setup Steps (after choosing role above)
 
-⚠️ **Note**: For any Redis server role (Options A, B, or C), you also need to:
+⚠️ **Note**: For any Redis server role (Options A, B, or C), you also need to complete these steps:
 
-1. **System Optimization**: Follow **Step 3** from cpu-node1 setup (choose Method A or B)
-2. **Directory Setup**: Run **Step 4** from cpu-node1 setup  
-3. **Service Management**: Run **Step 5** from cpu-node1 setup
+1. **System Optimization**: 
+   - **Option A replica**: Use cpu-node2 **Step 6.3** (includes all necessary optimizations)
+   - **Option B, C**: Follow cpu-node1 **Step 3** (choose Method A or B)
+
+2. **Directory Setup**: Follow cpu-node1 **Step 4** or cpu-node2 **Step 6.4**
+
+3. **Service Management**: Follow cpu-node1 **Step 5** or cpu-node2 **Step 6.5**
+
+4. **Verification**: Use appropriate verification commands from chosen setup
 
 ### Worker-Node3 Specific Commands
 
@@ -1219,5 +1421,113 @@ redis-cli -h 192.168.1.184 -a your-redis-password info replication
 # Force replica resync
 redis-cli -h 192.168.1.187 -a your-redis-password debug restart
 ```
+
+## Troubleshooting Common Issues
+
+### Issue 1: Connection Refused (`Could not connect to Redis at IP:6379: Connection refused`)
+
+**Symptoms:**
+```bash
+redis-cli -h 192.168.1.187 -a password
+Could not connect to Redis at 192.168.1.187:6379: Connection refused
+```
+
+**Root Cause:** Redis is bound to `127.0.0.1` (localhost only) instead of `0.0.0.0` (all interfaces).
+
+**Check:**
+```bash
+sudo systemctl status redis-server
+# Look for: "/usr/bin/redis-server 127.0.0.1:6379" (BAD)
+# Should be: "/usr/bin/redis-server 0.0.0.0:6379" (GOOD)
+```
+
+**Solution:**
+```bash
+# 1. Verify config file has correct bind setting
+sudo grep "^bind" /etc/redis/redis.conf
+# Should show: bind 0.0.0.0
+
+# 2. If incorrect, fix it:
+sudo sed -i 's/^bind 127.0.0.1/bind 0.0.0.0/' /etc/redis/redis.conf
+
+# 3. Restart Redis to apply changes
+sudo systemctl restart redis-server
+
+# 4. Verify fix
+sudo systemctl status redis-server
+# Should now show: "/usr/bin/redis-server 0.0.0.0:6379"
+```
+
+### Issue 2: Authentication Required (`NOAUTH Authentication required`)
+
+**Symptoms:**
+```bash
+redis-cli -h 192.168.1.184 ping
+(error) NOAUTH Authentication required.
+```
+
+**Solution:**
+```bash
+# Use password authentication
+redis-cli -h 192.168.1.184 -a your-password ping
+
+# Or authenticate after connecting
+redis-cli -h 192.168.1.184
+AUTH your-password
+ping
+```
+
+### Issue 3: Redis Won't Start After Configuration Changes
+
+**Check logs:**
+```bash
+sudo journalctl -u redis-server --no-pager -n 50
+```
+
+**Common fixes:**
+```bash
+# 1. Check config syntax (no --test-config in Redis 7.0+)
+sudo systemctl restart redis-server
+sudo systemctl status redis-server
+
+# 2. Check file permissions
+sudo chown redis:redis /var/lib/redis
+sudo chown redis:redis /var/log/redis
+
+# 3. Check for duplicate config entries
+sudo grep -n "^maxmemory" /etc/redis/redis.conf
+sudo grep -n "^bind" /etc/redis/redis.conf
+```
+
+### Issue 4: Replication Not Working
+
+**On Master - check connected slaves:**
+```bash
+redis-cli -h 192.168.1.184 -a password info replication
+# Should show: connected_slaves:1 or connected_slaves:2
+```
+
+**On Replica - check replication status:**
+```bash
+redis-cli -h 192.168.1.187 -a password info replication
+# Should show: 
+# role:slave
+# master_host:192.168.1.184
+# master_link_status:up
+```
+
+**Fix replica issues:**
+```bash
+# 1. Check replica config
+sudo grep -E "(replicaof|masterauth)" /etc/redis/redis.conf
+
+# 2. Restart replica
+sudo systemctl restart redis-server
+
+# 3. Check logs
+sudo journalctl -u redis-server --no-pager -n 20
+```
+
+---
 
 This Redis setup provides high-performance caching, feature serving, real-time analytics, and model serving capabilities that integrate seamlessly with your entire data engineering ecosystem.
