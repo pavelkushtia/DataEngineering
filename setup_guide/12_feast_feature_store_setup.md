@@ -84,18 +84,25 @@ mkdir -p {features,data,scripts,notebooks,tests}
 ## Step 3: Configure Feast Feature Store
 
 ### Main Feature Store Configuration:
-```python
-# Edit feature_store.yaml
+```bash
+# Make sure you're in the feast_repo directory
+cd /home/sanzad/feast-store/feast_repo
+
+# Edit the feature_store.yaml file (created by feast init)
 nano feature_store.yaml
 ```
 
+**IMPORTANT: Replace the following placeholders with your actual passwords:**
+- `YOUR_DATAENG_PASSWORD_HERE` → Your PostgreSQL dataeng user password
+- `YOUR_REDIS_PASSWORD_HERE` → Your Redis password (if you have one set)
+
 ```yaml
 project: homelab_ml_platform
-registry: postgresql://dataeng:password@192.168.1.184:5432/feast_registry
+registry: postgresql://dataeng:YOUR_DATAENG_PASSWORD_HERE@192.168.1.184:5432/feast_registry
 provider: local
 online_store:
   type: redis
-  connection_string: redis://:your-redis-password@192.168.1.184:6379/0
+  connection_string: redis://:YOUR_REDIS_PASSWORD_HERE@192.168.1.184:6379/0
 
 offline_store:
   type: postgres
@@ -103,7 +110,7 @@ offline_store:
   port: 5432
   database: analytics_db
   user: dataeng
-  password: password
+  password: YOUR_DATAENG_PASSWORD_HERE
 
 batch_engine:
   type: spark.engine
@@ -136,7 +143,10 @@ GRANT ALL PRIVILEGES ON DATABASE feast_registry TO dataeng;
 ## Step 5: Define Feature Entities and Sources
 
 ### Create entity definitions:
-```python
+```bash
+# Make sure you're in the feast_repo directory
+cd /home/sanzad/feast-store/feast_repo
+
 # Create features/entities.py
 nano features/entities.py
 ```
@@ -461,7 +471,10 @@ feast feature-services list
 ## Step 7: Create Sample Data and Feature Engineering
 
 ### Create sample data generation script:
-```python
+```bash
+# Make sure you're in the feast_repo directory
+cd /home/sanzad/feast-store/feast_repo
+
 # Create data/generate_sample_data.py
 nano data/generate_sample_data.py
 ```
@@ -476,7 +489,8 @@ import random
 
 class SampleDataGenerator:
     def __init__(self):
-        self.engine = create_engine('postgresql://dataeng:password@192.168.1.184:5432/analytics_db')
+        # REPLACE 'YOUR_PASSWORD' with your actual dataeng password
+        self.engine = create_engine('postgresql://dataeng:YOUR_PASSWORD@192.168.1.184:5432/analytics_db')
         
     def generate_user_profiles(self, num_users=10000):
         """Generate user profile data"""
@@ -826,12 +840,12 @@ class GPUNodeFeatureClient:
     """Feature client for GPU node ML applications"""
     
     def __init__(self, feast_server_url='http://192.168.1.184:6566',
-                 redis_host='192.168.1.184', redis_password='your-redis-password'):
+                 redis_host='192.168.1.184', redis_password='YOUR_REDIS_PASSWORD'):
         self.feast_server_url = feast_server_url
         self.redis_client = redis.Redis(
             host=redis_host, 
             port=6379, 
-            password=redis_password,
+            password=redis_password,  # REPLACE 'YOUR_REDIS_PASSWORD' with actual Redis password
             decode_responses=True
         )
     
@@ -1014,7 +1028,7 @@ class FeastMonitoring:
         self.fs = FeatureStore(repo_path="/home/sanzad/feast-store/feast_repo")
         self.redis_client = redis.Redis(
             host='192.168.1.184', 
-            password='your-redis-password',
+            password='YOUR_REDIS_PASSWORD',  # REPLACE with your actual Redis password
             decode_responses=True
         )
     
@@ -1053,7 +1067,7 @@ class FeastMonitoring:
                 LIMIT 1
             """
             from sqlalchemy import create_engine, text
-            engine = create_engine('postgresql://dataeng:password@192.168.1.184:5432/analytics_db')
+            engine = create_engine('postgresql://dataeng:YOUR_PASSWORD@192.168.1.184:5432/analytics_db')  # REPLACE YOUR_PASSWORD
             with engine.connect() as conn:
                 result = conn.execute(text(test_query))
                 health_status['offline_store_accessible'] = True
