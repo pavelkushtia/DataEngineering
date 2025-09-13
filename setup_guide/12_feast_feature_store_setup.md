@@ -63,8 +63,18 @@ feast version
 mkdir -p /home/sanzad/feast-store
 cd /home/sanzad/feast-store
 
-# Initialize Feast repository
+# Initialize Feast repository with PostgreSQL template
 feast init -t postgres feast_repo
+
+# During initialization, you'll be prompted for the following:
+# Postgres host [localhost]: 192.168.1.184
+# Postgres port [5432]: 5432  
+# Postgres database name [feast]: analytics_db
+# Postgres schema [public]: public
+# Postgres username [feast]: dataeng
+# Postgres password: [enter your dataeng password]
+# Should I upload example data to Postgres (overwriting "feast_driver_hourly_stats" table)? [Y/n]: Y
+
 cd feast_repo
 
 # Create additional directories
