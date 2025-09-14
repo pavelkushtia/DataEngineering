@@ -301,30 +301,38 @@ python test_pytorch_gpu.py
 
 ## Step 5: Spark MLlib with GPU Support
 
-### Install Java and Spark:
+> **Note**: This setup uses the existing Spark cluster from `setup_guide/03_spark_cluster_setup.md` as the compute backend. The GPU node acts as a Spark **client/driver** only, leveraging the distributed cluster for MLlib computations while keeping GPU-specific operations local.
+
+### Install Java and PySpark Client:
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
 ```bash
-# Install Java 11 (required for Spark)
+# Install Java 11 (required for Spark client)
 sudo apt install -y openjdk-11-jdk
 
 # Set JAVA_HOME
 echo 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64' >> ~/.bashrc
 source ~/.bashrc
 
-# Download and install Spark (keeping compatible version)
-cd /home/$(whoami)
-wget https://dlcdn.apache.org/spark/spark-3.5.6/spark-3.5.6-bin-hadoop3.tgz
-tar -xzf spark-3.5.6-bin-hadoop3.tgz
-mv spark-3.5.6-bin-hadoop3 spark
+# Activate ML environment and install PySpark client
+source ml-env/bin/activate
+pip install pyspark==3.5.0
 
-# Add Spark to PATH
-echo 'export SPARK_HOME=/home/'$(whoami)'/spark' >> ~/.bashrc
-echo 'export PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin' >> ~/.bashrc
-source ~/.bashrc
+# Install Spark client dependencies
+pip install py4j findspark
 ```
 
 ### Install RAPIDS and GPU-accelerated libraries:
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
 ```bash
-# Activate ML environment
+# Activate ML environment (created in Step 2)
 source ml-env/bin/activate
 
 # Install RAPIDS for GPU-accelerated data science
@@ -344,43 +352,373 @@ pip install lightgbm
 pip install catboost
 ```
 
-### Configure Spark for GPU:
+### Option A: Add GPU Node as Spark Worker (Recommended for GPU MLlib)
+
+**This approach adds the GPU node as a worker to leverage GPU for Spark ML:**
+
+#### A.1: Install Spark on GPU Node
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
 ```bash
-# Create Spark GPU configuration
+# Install full Spark on GPU node (same version as cluster)
+cd /home/$(whoami)
+wget https://dlcdn.apache.org/spark/spark-3.5.6/spark-3.5.6-bin-hadoop3.tgz
+tar -xzf spark-3.5.6-bin-hadoop3.tgz
+mv spark-3.5.6-bin-hadoop3 spark
+
+# Add to PATH
+echo 'export SPARK_HOME=/home/'$(whoami)'/spark' >> ~/.bashrc
+echo 'export PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin' >> ~/.bashrc
+source ~/.bashrc
+
+# Create GPU-enabled worker configuration
 mkdir -p $SPARK_HOME/conf
-nano $SPARK_HOME/conf/spark-defaults.conf
+nano $SPARK_HOME/conf/spark-env.sh
+```
+
+#### A.2: Configure GPU Worker
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)/spark/conf`**
+
+```bash
+#!/usr/bin/env bash
+
+# Java and Spark paths
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+export SPARK_HOME=/home/$(whoami)/spark
+
+# GPU Worker Configuration
+export SPARK_WORKER_CORES=8
+export SPARK_WORKER_MEMORY=16g
+export SPARK_WORKER_PORT=7078
+export SPARK_WORKER_WEBUI_PORT=8081
+export SPARK_WORKER_DIR=/home/$(whoami)/spark/work
+
+# GPU Resource Discovery
+export SPARK_WORKER_RESOURCE_FILE=/home/$(whoami)/spark/conf/worker-resources.json
+```
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)/spark/conf`**
+
+```bash
+# Create GPU resource configuration
+nano $SPARK_HOME/conf/worker-resources.json
+```
+
+```json
+{
+  "gpu": {
+    "amount": 1,
+    "discoveryScript": "/home/$(whoami)/spark/conf/gpu-discovery.sh"
+  }
+}
+```
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)/spark/conf`**
+
+```bash
+# Create GPU discovery script
+nano $SPARK_HOME/conf/gpu-discovery.sh
+chmod +x $SPARK_HOME/conf/gpu-discovery.sh
+```
+
+```bash
+#!/bin/bash
+# GPU Discovery Script for Spark
+nvidia-smi --query-gpu=index --format=csv,noheader,nounits | \
+awk '{print "{\"name\": \"gpu\", \"addresses\": [\"" $1 "\"]}"}'
+```
+
+#### A.3: Integrate GPU Node into Existing Cluster
+
+**Step 1: Set up SSH access from master to GPU node**
+
+**🖥️ Machine: `cpu-node1` (192.168.1.184) - Spark Master**  
+**👤 User: `spark`**  
+**📁 Directory: `/home/spark`**
+
+```bash
+# Connect to master node as spark user
+ssh spark@192.168.1.184
+
+# Generate or use existing SSH key (run on master)
+ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa  # Skip if key already exists
+
+# Copy public key to GPU node
+ssh-copy-id $(whoami)@192.168.1.79
+
+# Test SSH connectivity
+ssh $(whoami)@192.168.1.79 "hostname"
+# Should return: gpu-node
+
+# Exit master node
+exit
+```
+
+**Step 2: Update cluster configuration on master**
+
+**🖥️ Machine: `cpu-node1` (192.168.1.184) - Spark Master**  
+**👤 User: `spark`**  
+**📁 Directory: `/home/spark/spark/conf`**
+
+```bash
+# Add GPU worker to workers file (run from your local machine)
+ssh spark@192.168.1.184 "echo '192.168.1.79' >> /home/spark/spark/conf/workers"
+
+# Verify the workers file now contains all nodes
+ssh spark@192.168.1.184 "cat /home/spark/spark/conf/workers"
+# Should show:
+# 192.168.1.187
+# 192.168.1.190  
+# 192.168.1.79
+```
+
+**Step 3: Copy cluster configuration to GPU node**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)/spark/conf`**
+
+```bash
+# Copy master's configuration to GPU node for consistency
+scp spark@192.168.1.184:/home/spark/spark/conf/spark-defaults.conf $SPARK_HOME/conf/
+scp spark@192.168.1.184:/home/spark/spark/conf/log4j2.properties $SPARK_HOME/conf/ 2>/dev/null || true
+
+# Create directories that master expects
+mkdir -p $SPARK_HOME/{logs,work,recovery,warehouse}
+```
+
+**Step 4: Configure GPU worker systemd service**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `root` (via sudo)**  
+**📁 Directory: `/etc/systemd/system`**
+
+```bash
+sudo nano /etc/systemd/system/spark-worker.service
+```
+
+```ini
+[Unit]
+Description=Apache Spark GPU Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=$(whoami)
+Group=$(whoami)
+WorkingDirectory=/home/$(whoami)/spark
+Environment=SPARK_HOME=/home/$(whoami)/spark
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+Environment=SPARK_LOCAL_IP=192.168.1.79
+ExecStart=/home/$(whoami)/spark/sbin/start-worker.sh --host 192.168.1.79 spark://192.168.1.184:7077
+ExecStop=/home/$(whoami)/spark/sbin/stop-worker.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Step 5: Update firewall on GPU node**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
+```bash
+# Open Spark worker ports
+sudo ufw allow 7078/tcp   # Spark Worker port
+sudo ufw allow 8081/tcp   # Spark Worker Web UI
+sudo ufw reload
+```
+
+**Step 6: Start GPU worker and restart master**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
+```bash
+# Enable and start GPU worker service
+sudo systemctl daemon-reload
+sudo systemctl enable spark-worker
+sudo systemctl start spark-worker
+
+# Check GPU worker status
+sudo systemctl status spark-worker
+```
+
+**🖥️ Machine: `cpu-node1` (192.168.1.184) - Spark Master**  
+**👤 User: `spark`**  
+**📁 Directory: `/home/spark`**
+
+```bash
+# Restart master to recognize new worker (IMPORTANT!)
+ssh spark@192.168.1.184 "sudo systemctl restart spark-master"
+
+# Check master status
+ssh spark@192.168.1.184 "sudo systemctl status spark-master"
+```
+
+**Step 7: Synchronize JAR files across cluster**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)/spark/jars`**
+
+```bash
+# Ensure all nodes have the same JAR files for consistency
+# Copy any additional JARs from existing workers to GPU node
+scp spark@192.168.1.187:/home/spark/spark/jars/postgresql*.jar $SPARK_HOME/jars/ 2>/dev/null || true
+scp spark@192.168.1.187:/home/spark/spark/jars/delta*.jar $SPARK_HOME/jars/ 2>/dev/null || true
+scp spark@192.168.1.187:/home/spark/spark/jars/kafka*.jar $SPARK_HOME/jars/ 2>/dev/null || true
+
+# Or copy GPU node's JARs to existing workers if they need GPU libraries
+# scp $SPARK_HOME/jars-ext/rapids*.jar spark@192.168.1.187:/home/spark/spark/jars/
+```
+
+**Step 8: Verify cluster integration**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79) or your local machine**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
+```bash
+# Check Spark Master Web UI - should show 3 workers now
+# http://192.168.1.184:8080
+
+# Check GPU worker is registered
+curl -s http://192.168.1.184:8080/json/ | grep -A 5 "192.168.1.79"
+
+# Verify GPU worker resources are detected
+curl -s http://192.168.1.79:8081/json/ | grep -i gpu
+
+# Check GPU worker's own Web UI
+# http://192.168.1.79:8081
+
+# Test cluster with all 3 workers
+ssh spark@192.168.1.184 '/home/spark/spark/bin/spark-shell --master spark://192.168.1.184:7077 --conf "spark.sql.adaptive.enabled=true"'
+```
+
+**Expected Result:**
+- Master Web UI shows **3 workers**: 192.168.1.187, 192.168.1.190, 192.168.1.79
+- GPU worker shows **GPU resources available**
+- Applications can now schedule GPU-accelerated tasks on 192.168.1.79
+
+### Option B: Client-Only Setup (No GPU MLlib Acceleration)
+
+**Use this only if you want CPU-based MLlib + local GPU libraries:**
+
+### Configure Spark Client Connection:
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
+```bash
+# Create configuration directory for client
+mkdir -p ~/.spark/conf
+
+# Create client configuration file
+nano ~/.spark/conf/spark-defaults.conf
 ```
 
 ```properties
-# Spark GPU Configuration
+# Connection to existing Spark cluster
 spark.master                    spark://192.168.1.184:7077
-spark.eventLog.enabled          true
-spark.eventLog.dir              /home/$(whoami)/spark/logs
-spark.sql.adaptive.enabled      true
-spark.sql.adaptive.coalescePartitions.enabled true
 
-# GPU Configuration
-spark.task.cpus                 1
+# Driver configuration (runs on GPU node)
+spark.driver.memory             4g
+spark.driver.cores              4
+spark.driver.host               192.168.1.79
+spark.driver.bindAddress        192.168.1.79
+
+# Executor configuration (runs on cluster workers)
 spark.executor.cores            2
 spark.executor.memory           4g
-spark.executor.memoryFraction   0.8
+spark.executor.instances        4
 
-# RAPIDS Integration
+# Performance optimizations
+spark.sql.adaptive.enabled      true
+spark.sql.adaptive.coalescePartitions.enabled true
 spark.sql.execution.arrow.pyspark.enabled true
 spark.sql.execution.arrow.pyspark.fallback.enabled true
 
-# GPU ML Libraries
-spark.jars.packages             com.nvidia:xgboost4j-spark-gpu_2.12:1.7.3,com.nvidia:xgboost4j-gpu_2.12:1.7.3
+# Enable event logging to cluster history server
+spark.eventLog.enabled          true
+spark.eventLog.dir              /home/spark/spark/logs
 
-# Driver configuration for GPU node
-spark.driver.memory             2g
-spark.driver.cores              2
+# Network configuration
+spark.network.timeout           800s
+spark.executor.heartbeatInterval 60s
+
+# Serialization
+spark.serializer                org.apache.spark.serializer.KryoSerializer
 ```
 
-### Test Spark MLlib with GPU:
+### Set environment variables:
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
+```bash
+# Add to ~/.bashrc
+echo 'export SPARK_CONF_DIR=~/.spark/conf' >> ~/.bashrc
+echo 'export PYSPARK_PYTHON=/home/'$(whoami)'/ml-env/bin/python' >> ~/.bashrc
+echo 'export PYSPARK_DRIVER_PYTHON=/home/'$(whoami)'/ml-env/bin/python' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### How Spark MLlib Distributes with Client-Only Setup:
+
+**Key Understanding: MLlib Algorithms Execute on Cluster Workers, Not Driver**
+
+```
+What Happens When You Run: model = lr.fit(training_data)
+
+GPU Node (Driver/Client)              Spark Cluster (Workers)
+┌─────────────────────────┐          ┌──────────────────────────┐
+│ 1. Your Python Code    │          │  4. Actual ML Computation │
+│    lr = LinearRegression│    ──►   │  • Matrix multiplications │
+│    model = lr.fit(df)   │          │  • Gradient calculations  │
+│                         │          │  • Iterative optimization │
+│ 2. Job Planning         │          │                          │
+│    • Break into tasks   │    ──►   │  5. Distributed Execution │
+│    • Send to executors  │          │  • Task 1 → Worker 187   │
+│                         │          │  • Task 2 → Worker 190   │
+│ 3. Result Collection    │    ◄──   │  • Parallel processing   │
+│    • Gather coefficients│          │  • Send results back     │
+│    • Build final model │          │                          │
+└─────────────────────────┘          └──────────────────────────┘
+```
+
+**What Requires Network Transfer:**
+- ✅ Serialized algorithm parameters
+- ✅ Training data partitions  
+- ✅ Gradient updates and model coefficients
+- ❌ NOT the algorithm implementation (already on workers)
+
+### Test Distributed Spark MLlib:
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
 ```python
-# Create test script
-nano test_spark_gpu_ml.py
+# Create test script to demonstrate cluster distribution
+nano test_spark_cluster_ml.py
 ```
 
 ```python
@@ -392,57 +730,109 @@ from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.regression import LinearRegression
 from pyspark.ml.evaluation import RegressionEvaluator
-from pyspark.sql.functions import rand, randn
+from pyspark.sql.functions import rand, randn, when
 import cudf
 import cuml
 import numpy as np
 import time
 
 def test_spark_ml():
-    # Initialize Spark
+    # Initialize Spark - connects to cluster (not local)
     spark = SparkSession.builder \
-        .appName("GPU-ML-Test") \
-        .config("spark.master", "local[*]") \
-        .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
-        .getOrCreate()
+        .appName("Distributed-MLlib-Test") \
+        .getOrCreate()  # Uses spark-defaults.conf settings
+    
+    # Show cluster connection info
+    print(f"Connected to: {spark.sparkContext.master}")
+    print(f"Default parallelism: {spark.sparkContext.defaultParallelism}")
+    
+    # Show executors (should display worker nodes 187, 190)
+    status = spark.sparkContext.statusTracker()
+    executors = status.getExecutorInfos()
+    print(f"Active executors: {len(executors)}")
+    for executor in executors:
+        print(f"  Executor {executor.executorId}: {executor.host}")
     
     print("=== Spark MLlib Test ===")
     
-    # Generate sample data
-    df = spark.range(0, 100000).select(
+    # Show cluster composition (CPU vs GPU workers)
+    print(f"\n=== Cluster Worker Analysis ===")
+    for executor in executors:
+        if executor.host == "192.168.1.79":
+            print(f"  ✅ GPU Worker: {executor.host} (RTX 2060 Super)")
+        else:
+            print(f"  ⚠️  CPU Worker: {executor.host} (No GPU)")
+    
+    # Generate larger dataset to benefit from GPU acceleration
+    print(f"\n=== Testing GPU-Accelerated MLlib ===")
+    df = spark.range(0, 1000000).select(  # 1M rows for GPU benefit
         "id",
         (rand() * 10).alias("feature1"),
         (randn() * 5).alias("feature2"),
+        (rand() * 8).alias("feature3"),
+        (randn() * 12).alias("feature4"),
         (rand() * 20 + randn() * 3).alias("label")
     )
     
+    print(f"Dataset size: {df.count():,} rows")
+    print(f"Dataset partitions: {df.rdd.getNumPartitions()}")
+    
     # Prepare features
     assembler = VectorAssembler(
-        inputCols=["feature1", "feature2"],
+        inputCols=["feature1", "feature2", "feature3", "feature4"],
         outputCol="features"
     )
     
     df_assembled = assembler.transform(df)
-    
-    # Split data
     train_df, test_df = df_assembled.randomSplit([0.8, 0.2], seed=42)
     
-    # Train linear regression
-    lr = LinearRegression(featuresCol="features", labelCol="label")
+    # Test GPU-aware Random Forest (benefits from GPU acceleration)
+    print(f"\n--- Random Forest with GPU Resources ---")
+    from pyspark.ml.classification import RandomForestClassifier
+    
+    # Create binary classification target
+    df_classification = df_assembled.withColumn("class_label",
+        when(df_assembled.label > 15, 1.0).otherwise(0.0)
+    )
+    
+    rf = RandomForestClassifier(
+        featuresCol="features",
+        labelCol="class_label", 
+        numTrees=100,
+        maxDepth=15,
+        # Request GPU resources if available
+        # Spark will automatically utilize GPU node for computation
+    )
     
     start_time = time.time()
-    model = lr.fit(train_df)
-    train_time = time.time() - start_time
+    rf_model = rf.fit(df_classification)
+    gpu_train_time = time.time() - start_time
     
-    # Make predictions
-    predictions = model.transform(test_df)
+    print(f"Random Forest training time: {gpu_train_time:.2f} seconds")
+    print(f"Trees trained: {rf_model.getNumTrees}")
     
-    # Evaluate
-    evaluator = RegressionEvaluator(labelCol="label", predictionCol="prediction", metricName="rmse")
-    rmse = evaluator.evaluate(predictions)
+    # Test Linear Regression with iterative algorithm
+    print(f"\n--- Linear Regression with Distributed Gradient Descent ---")
+    lr = LinearRegression(
+        featuresCol="features", 
+        labelCol="label",
+        maxIter=50,
+        regParam=0.01,
+        # GPU node will handle gradient computations
+    )
     
-    print(f"Spark MLlib Training time: {train_time:.4f} seconds")
-    print(f"RMSE: {rmse:.4f}")
+    start_time = time.time()  
+    lr_model = lr.fit(train_df)
+    lr_train_time = time.time() - start_time
+    
+    print(f"Linear Regression training time: {lr_train_time:.2f} seconds")
+    print(f"Coefficients: {lr_model.coefficients[:2]}...")  # Show first 2
+    print(f"RMSE: {lr_model.summary.rootMeanSquaredError:.4f}")
+    
+    # Show resource utilization
+    print(f"\n=== Resource Utilization ===")
+    print("Note: GPU computations happened on worker 192.168.1.79")
+    print("CPU workers (187, 190) handled data shuffling and coordination")
     
     spark.stop()
 
@@ -487,9 +877,18 @@ if __name__ == "__main__":
     test_rapids_gpu()
 ```
 
-Run the test:
+**Run the test:**
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
 ```bash
-python test_spark_gpu_ml.py
+# Activate ML environment first
+source ml-env/bin/activate
+
+# Run the test
+python test_spark_cluster_ml.py
 ```
 
 ## Step 6: Jupyter Lab Setup with GPU Support

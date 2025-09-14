@@ -120,11 +120,7 @@ batch_engine:
     spark.executor.cores: "2"
     spark.sql.adaptive.enabled: "true"
 
-entity_key_serialization_version: 2
-
-flags:
-  alpha_features: true
-  beta_features: true
+entity_key_serialization_version: 3
 ```
 
 ## Step 4: No Registry Database Setup Needed
@@ -191,15 +187,16 @@ If you want to create your own features, here's the **working pattern**:
 ```python
 # Create a new feature file (e.g., my_features.py)
 from datetime import timedelta
-from feast import Entity, FeatureService, FeatureView, Field
+from feast import Entity, FeatureService, FeatureView, Field, ValueType
 from feast.infra.offline_stores.contrib.postgres_offline_store.postgres_source import PostgreSQLSource
 from feast.types import Float32, Int64, String
 
-# 1. Define Entity
+# 1. Define Entity (with value_type to avoid warnings)
 user = Entity(
     name="user", 
     join_keys=["user_id"],
-    description="User entity"
+    description="User entity",
+    value_type=ValueType.INT64
 )
 
 # 2. Define Data Source
@@ -233,6 +230,8 @@ user_service = FeatureService(
 
 **Key points that make this work:**
 - Use the **correct import path** for PostgreSQL sources
+- **Include ValueType** for entities to avoid deprecation warnings
+- Set **entity_key_serialization_version: 3** (not 2)
 - Keep it **simple** - don't create complex nested directories
 - **Test each addition** with `feast apply`
 - Make sure your database tables exist before creating sources
@@ -249,7 +248,7 @@ source /home/sanzad/feast-env/bin/activate
 
 # Check what was deployed
 feast feature-views list
-feast entities list  
+feast entities list
 feast feature-services list
 
 # Test feature serving (optional - materializes features to online store)
@@ -257,6 +256,7 @@ feast materialize-incremental $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)
 ```
 
 **Expected output:**
+- Clean output without deprecation warnings
 - You should see the `driver_hourly_stats` feature view
 - The `driver` entity should be listed
 - Feature services like `driver_activity_v1` should appear
@@ -355,6 +355,8 @@ feast materialize-incremental $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)
 - **File-based registry** works better than PostgreSQL registry in Feast 0.53.0
 - **Quote numeric passwords** in YAML configurations  
 - **Use correct import paths** for PostgreSQL sources
+- **Set entity_key_serialization_version: 3** to avoid deprecation warnings
+- **Include ValueType for entities** to avoid future compatibility warnings
 - **Keep it simple** - complex nested directories cause import issues
 - **Test incrementally** - add one feature at a time and verify with `feast apply`
 
@@ -362,5 +364,6 @@ Your Feast Feature Store is now the **central nervous system** for your ML infra
 
 ---
 
-**Documentation Status:** ✅ **Updated to reflect working configuration**  
-**Last Tested:** Successfully working with Feast 0.53.0, PostgreSQL, and Redis
+**Documentation Status:** ✅ **Updated to reflect clean, warning-free configuration**  
+**Last Tested:** Successfully working with Feast 0.53.0, PostgreSQL, and Redis  
+**Configuration:** Optimized for zero warnings and best practices
