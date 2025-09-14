@@ -32,86 +32,88 @@ This guide sets up a comprehensive GPU-accelerated machine learning environment 
                                                                     └─────────────────┘
 ```
 
-## Step 1: NVIDIA Driver and CUDA Installation
+## Step 1: NVIDIA Driver Installation
 
-### Install NVIDIA Driver:
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
+
+### First, Check if NVIDIA is Already Working:
+```bash
+# Test if NVIDIA driver is already working
+nvidia-smi
+lspci | grep -i nvidia
+```
+
+**If `nvidia-smi` shows your GPU properly, SKIP the installation steps below and proceed to Step 2.**
+
+### If NVIDIA Driver Installation is Needed:
+
+⚠️ **Important**: Use Ubuntu's official repositories only. Do not add third-party CUDA repositories as they can cause version conflicts.
+
 ```bash
 # Update system
 sudo apt update && sudo apt upgrade -y
 
-# Install required packages
-sudo apt install -y build-essential dkms
+# Check what Ubuntu recommends for your GPU
+ubuntu-drivers devices
 
-# Add NVIDIA PPA
-sudo add-apt-repository ppa:graphics-drivers/ppa
-sudo apt update
-
-# Install recommended driver
+# Install the recommended driver automatically (recommended)
 sudo ubuntu-drivers autoinstall
 
-# Or install specific driver version
-# sudo apt install nvidia-driver-525
+# OR install a specific version if you prefer
+# sudo apt install nvidia-driver-535
 
 # Reboot to load driver
 sudo reboot
 ```
 
-After reboot, verify driver installation:
+### After reboot, verify installation:
 ```bash
+# Test NVIDIA driver
 nvidia-smi
-lspci | grep -i nvidia
+
+# Should show your GPU with driver version and CUDA version
+# Example output:
+# Driver Version: 535.247.01   CUDA Version: 12.2
 ```
 
-### Install CUDA Toolkit:
+### If nvidia-smi fails after reboot:
 ```bash
-# Download and install CUDA 12.0 (compatible with RTX 2060 Super)
-wget https://developer.download.nvidia.com/compute/cuda/12.0.0/local_installers/cuda_12.0.0_525.60.13_linux.run
+# Check if modules are loaded
+lsmod | grep nvidia
 
-# Make installer executable
-chmod +x cuda_12.0.0_525.60.13_linux.run
+# If not loaded, load manually
+sudo modprobe nvidia
+sudo modprobe nvidia_drm
+sudo modprobe nvidia_modeset
 
-# Run installer
-sudo sh cuda_12.0.0_525.60.13_linux.run
-
-# Follow installer prompts:
-# - Uncheck Driver installation (already installed)
-# - Check CUDA Toolkit installation
-# - Accept license and continue
-```
-
-### Set up CUDA environment:
-```bash
-# Add to ~/.bashrc
-echo 'export PATH=/usr/local/cuda-12.0/bin${PATH:+:${PATH}}' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.0/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}' >> ~/.bashrc
-echo 'export CUDA_HOME=/usr/local/cuda-12.0' >> ~/.bashrc
-
-# Reload environment
-source ~/.bashrc
-
-# Verify CUDA installation
-nvcc --version
+# Test again
 nvidia-smi
 ```
 
-### Install cuDNN:
+### CUDA Toolkit Installation (Optional - Only if Needed):
+
+**Note**: Modern TensorFlow and PyTorch handle CUDA automatically. Only install CUDA toolkit if you need `nvcc` compiler or specific CUDA development tools.
+
 ```bash
-# Download cuDNN from NVIDIA Developer (requires registration)
-# https://developer.nvidia.com/cudnn
+# For Ubuntu 24.04, install from Ubuntu repositories
+sudo apt install nvidia-cuda-toolkit
 
-# For this example, download cuDNN 8.6.0 for CUDA 12.0
-# wget https://developer.download.nvidia.com/compute/cudnn/secure/8.6.0/local_installers/12.0/cudnn-linux-x86_64-8.6.0.163_cuda12-archive.tar.xz
+# Or for specific CUDA version, use Ubuntu's packages [Usually not needed as above is sufficient]
+sudo apt search cuda-toolkit
+sudo apt install cuda-toolkit-12-2
 
-# Extract and install
-tar -xvf cudnn-linux-x86_64-8.6.0.163_cuda12-archive.tar.xz
-
-# Copy files to CUDA directory
-sudo cp cudnn-linux-x86_64-8.6.0.163_cuda12-archive/include/cudnn*.h /usr/local/cuda-12.0/include
-sudo cp cudnn-linux-x86_64-8.6.0.163_cuda12-archive/lib/libcudnn* /usr/local/cuda-12.0/lib64
-sudo chmod a+r /usr/local/cuda-12.0/include/cudnn*.h /usr/local/cuda-12.0/lib64/libcudnn*
+# Verify installation (if installed)
+nvcc --version  # Only works if CUDA toolkit installed
+nvidia-smi      # Always works with just the driver
 ```
 
 ## Step 2: Python Environment Setup
+
+**🖥️ Machine: `gpu-node` (192.168.1.79)**  
+**👤 User: `$(whoami)` (your regular user)**  
+**📁 Directory: `/home/$(whoami)`**
 
 ### Install Python and dependencies:
 ```bash
@@ -1729,5 +1731,80 @@ After completing the setup, you can access:
 4. **Data Loading Optimization**:
    - Use `tf.data` or PyTorch DataLoader with multiple workers
    - Pre-load data to GPU memory when possible
+
+## Troubleshooting
+
+### NVIDIA Driver Issues
+
+#### Problem: "NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver"
+
+**Symptoms:**
+- `nvidia-smi` fails even though `lspci | grep nvidia` shows the GPU
+- Error about driver communication
+
+**Solutions:**
+1. **Check if already working first**: Always run `nvidia-smi` before making changes
+2. **Check kernel modules**: `lsmod | grep nvidia`
+3. **Load modules manually**: 
+   ```bash
+   sudo modprobe nvidia
+   sudo modprobe nvidia_drm
+   sudo modprobe nvidia_modeset
+   ```
+4. **If still failing**: `sudo reboot`
+
+#### Problem: Package Version Conflicts
+
+**Symptoms:**
+- `Unable to correct problems, you have held broken packages`
+- Different NVIDIA package versions (e.g., 535.x vs 570.x)
+- Dependencies on `libssl1.1` that doesn't exist
+
+**Root Cause:** 
+Mixing Ubuntu repositories with third-party CUDA repositories (e.g., Ubuntu 20.04 CUDA repo on Ubuntu 24.04)
+
+**Solution:**
+```bash
+# 1. Remove problematic repositories
+sudo rm /etc/apt/sources.list.d/cuda-ubuntu20*
+sudo rm /etc/apt/sources.list.d/*graphics-drivers*
+
+# 2. Clean up NVIDIA packages
+sudo apt purge nvidia-* libnvidia-*
+sudo apt autoremove
+
+# 3. Use Ubuntu's repositories only
+sudo apt update
+sudo ubuntu-drivers autoinstall
+# OR: sudo apt install nvidia-driver-535
+
+# 4. Reboot
+sudo reboot
+```
+
+#### Problem: Secure Boot Interference
+
+**Symptoms:**
+- Modules won't load: `modprobe nvidia` fails
+- `dmesg` shows signature verification errors
+
+**Solution:**
+```bash
+# Check secure boot status
+sudo apt install mokutil
+mokutil --sb-state
+
+# If enabled, either:
+# Option A: Disable secure boot in BIOS (easier)
+# Option B: Sign NVIDIA modules (more complex)
+```
+
+### Best Practices
+
+1. **Always check existing setup first**: Run `nvidia-smi` before making changes
+2. **Use Ubuntu's official packages**: Avoid third-party CUDA repositories
+3. **Match Ubuntu version**: Don't use Ubuntu 20.04 packages on Ubuntu 24.04
+4. **Let TensorFlow/PyTorch handle CUDA**: They include CUDA libraries automatically
+5. **Only install CUDA toolkit if needed**: For `nvcc` compiler or development tools
 
 This comprehensive GPU ML setup provides a powerful platform for training and serving machine learning models while integrating seamlessly with your existing data engineering infrastructure!
