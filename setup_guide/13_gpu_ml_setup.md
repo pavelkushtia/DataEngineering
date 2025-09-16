@@ -119,6 +119,8 @@ nvidia-smi      # Always works with just the driver
 
 **Note**: For Ubuntu 24.04, Python 3.12 is the default version. Python 3.10 is not available in the standard repositories.
 
+⚠️ **Important**: TensorFlow 2.16.1+ is required for Python 3.12 compatibility. Older versions (like 2.13.0) will NOT work.
+
 ```bash
 # For Ubuntu 24.04 - Install Python 3.12 and pip
 sudo apt install -y python3 python3-pip python3-dev python3-venv
@@ -142,8 +144,8 @@ pip install requests urllib3 tqdm
 # Activate ML environment
 source ml-env/bin/activate
 
-# Install TensorFlow GPU 
-pip install tensorflow[and-cuda]==2.13.0
+# Install TensorFlow GPU (2.16.1+ required for Python 3.12 support)
+pip install tensorflow[and-cuda]>=2.16.1
 
 # Install additional TensorFlow tools
 pip install tensorflow-datasets tensorflow-hub tensorflow-probability
@@ -217,8 +219,8 @@ python test_tensorflow_gpu.py
 ## Step 4: PyTorch GPU Installation
 
 ```bash
-# Install PyTorch with CUDA support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch with CUDA support (for CUDA 12.x)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # Install additional PyTorch libraries
 pip install torchtext torchdata
