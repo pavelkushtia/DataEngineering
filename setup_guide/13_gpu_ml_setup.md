@@ -116,12 +116,15 @@ nvidia-smi      # Always works with just the driver
 **📁 Directory: `/home/$(whoami)`**
 
 ### Install Python and dependencies:
+
+**Note**: For Ubuntu 24.04, Python 3.12 is the default version. Python 3.10 is not available in the standard repositories.
+
 ```bash
-# Install Python 3.10 and pip
-sudo apt install -y python3.10 python3.10-pip python3.10-dev python3.10-venv
+# For Ubuntu 24.04 - Install Python 3.12 and pip
+sudo apt install -y python3 python3-pip python3-dev python3-venv
 
 # Create Python environment for ML
-python3.10 -m venv ml-env
+python3 -m venv ml-env
 source ml-env/bin/activate
 
 # Upgrade pip
