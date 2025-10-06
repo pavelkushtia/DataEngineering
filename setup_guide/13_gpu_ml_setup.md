@@ -3,6 +3,21 @@
 ## Overview
 This guide sets up a comprehensive GPU-accelerated machine learning environment on the gpu-node (192.168.1.79) with RTX 2060 Super. The setup includes TensorFlow, PyTorch, Spark MLlib with GPU support, and integration with your existing data engineering infrastructure.
 
+## ⚠️ CRITICAL WARNING
+**Configuration files DO NOT expand shell variables like `$(whoami)` or `$HOME`!**
+- In systemd service files, JSON files, and other config files: Use actual paths like `/home/sanzad/spark`
+- Only bash commands and environment variable exports (in .bashrc) expand variables
+- This documentation assumes username `sanzad` - replace with your actual username throughout
+
+## 🔧 GPU Resource Detection Requirements
+**For Spark to detect GPU resources, you need ALL of these:**
+1. **worker-resources.json** - Defines GPU discovery script path
+2. **spark-defaults.conf** - Contains GPU resource properties (CRITICAL!)
+3. **gpu-discovery.sh** - Script that detects GPUs using nvidia-smi
+4. **systemd service** - Must have SPARK_WORKER_RESOURCE_FILE environment variable
+
+**Missing any of these will result in "No custom resources configured" error!**
+
 ## Machine Configuration
 - **GPU Node**: gpu-node (192.168.1.79)
 - **GPU**: NVIDIA RTX 2060 Super (8GB VRAM)
@@ -145,15 +160,57 @@ pip install requests urllib3 tqdm
 source ml-env/bin/activate
 
 # Install TensorFlow GPU (2.16.1+ required for Python 3.12 support)
-pip install tensorflow[and-cuda]>=2.16.1
+# Option A: Install base TensorFlow first (faster)
+pip install tensorflow>=2.16.1
+
+# Option B: Install with CUDA in one step (slower, larger download)
+# pip install tensorflow[and-cuda]>=2.16.1
 
 # Install additional TensorFlow tools
 pip install tensorflow-datasets tensorflow-hub tensorflow-probability
-pip install tensorboard tensorflow-addons
-pip install tf-agents tensorflow-recommenders
+pip install tensorboard
+
+# Note: tensorflow-addons is DISCONTINUED and doesn't work with Python 3.12/TensorFlow 2.16+
+# Note: tf-agents may have compatibility issues with newer TensorFlow versions
+# pip install tf-agents tensorflow-recommenders  # Install only if needed and compatible
 
 # Install TensorFlow Serving for model deployment
 pip install tensorflow-serving-api
+
+# Add CUDA support after basic installation (REQUIRED for GPU)
+pip install tensorflow[and-cuda]
+```
+
+### Troubleshooting TensorFlow GPU Issues:
+
+**Problem: "Cannot dlopen some GPU libraries" or "No GPU devices found"**
+
+This means CUDA libraries are missing. Solutions:
+
+```bash
+# Option 1: Install TensorFlow CUDA support (recommended)
+pip install tensorflow[and-cuda]
+
+# Option 2: Install system CUDA toolkit
+sudo apt install nvidia-cuda-toolkit
+
+# Verify CUDA installation
+python -c "import tensorflow as tf; print('GPUs:', len(tf.config.list_physical_devices('GPU')))"
+```
+
+### Troubleshooting Slow TensorFlow Installation:
+
+If TensorFlow installation is taking too long:
+
+```bash
+# Check installation progress
+pip install --verbose tensorflow>=2.16.1
+
+# Clear pip cache if stuck
+pip cache purge
+
+# Use conda as alternative (often faster)
+# conda install tensorflow-gpu -c conda-forge
 ```
 
 ### Test TensorFlow GPU:
@@ -169,18 +226,20 @@ from datetime import datetime
 
 print(f"TensorFlow version: {tf.__version__}")
 print(f"CUDA available: {tf.test.is_built_with_cuda()}")
-print(f"GPU available: {tf.test.is_gpu_available()}")
 
 # List physical devices
 print("Physical devices:")
 for device in tf.config.list_physical_devices():
     print(f"  {device}")
 
-# List GPU devices specifically
+# List GPU devices specifically  
 gpu_devices = tf.config.list_physical_devices('GPU')
 print(f"\nGPU devices: {len(gpu_devices)}")
 for gpu in gpu_devices:
     print(f"  {gpu}")
+
+# Check if GPU is available (newer API)
+print(f"GPU available: {len(gpu_devices) > 0}")
     
 # Test GPU computation
 if gpu_devices:
@@ -226,7 +285,14 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install torchtext torchdata
 pip install pytorch-lightning
 pip install transformers datasets accelerate
-pip install torch-geometric torch-scatter torch-sparse
+
+# Install PyTorch Geometric libraries (may require compilation)
+pip install torch-geometric torch-scatter
+
+# torch-sparse often fails to compile - try alternatives:
+# Option 1: Skip if not needed
+# Option 2: Try pre-built wheel: pip install torch-sparse -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
+# Option 3: Install build dependencies first: sudo apt install ninja-build
 
 # Install Optuna for hyperparameter optimization
 pip install optuna optuna-dashboard
@@ -306,6 +372,27 @@ Run the test:
 python test_pytorch_gpu.py
 ```
 
+### Troubleshooting PyTorch Geometric Installation:
+
+**Problem: "internal compiler error: Segmentation fault" when installing torch-sparse**
+
+This is a common issue due to compilation complexity. Solutions:
+
+```bash
+# Option 1: Install build dependencies
+sudo apt install ninja-build build-essential
+
+# Option 2: Use pre-built wheels
+pip install torch-sparse -f https://data.pyg.org/whl/torch-2.4.0+cu121.html
+
+# Option 3: Skip torch-sparse (not always required)
+# Most PyTorch Geometric functionality works without torch-sparse
+
+# Option 4: Free up memory and retry
+pip cache purge
+# Close other applications to free RAM, then retry installation
+```
+
 ## Step 5: Spark MLlib with GPU Support
 
 > **Note**: This setup uses the existing Spark cluster from `setup_guide/03_spark_cluster_setup.md` as the compute backend. The GPU node acts as a Spark **client/driver** only, leveraging the distributed cluster for MLlib computations while keeping GPU-specific operations local.
@@ -342,11 +429,23 @@ pip install py4j findspark
 # Activate ML environment (created in Step 2)
 source ml-env/bin/activate
 
-# Install RAPIDS for GPU-accelerated data science
-pip install cudf-cu11 cuml-cu11 cugraph-cu11 cuspatial-cu11 cupy-cuda11x
-pip install rapids-dependency-file-generator
+# Install RAPIDS for GPU-accelerated data science (OPTIONAL - Often problematic)
+# Note: RAPIDS has complex compatibility requirements with Python 3.12 and CUDA versions
+# 
+# Option 1: Skip RAPIDS (recommended for basic ML setup)
+# Most ML workflows work fine without RAPIDS
+#
+# Option 2: If you need RAPIDS, try CUDA 12 versions:
+# pip install cudf-cu12 cuml-cu12 cugraph-cu12 --extra-index-url https://pypi.nvidia.com
+#
+# Option 3: Use CUDA 11 with NVIDIA index:
+# pip install cudf-cu11 cuml-cu11 cugraph-cu11 --extra-index-url https://pypi.nvidia.com
+# pip install rapids-dependency-file-generator
 
-# Install PySpark (compatible with Spark 3.5.6)
+# Install CuPy (more reliable than full RAPIDS stack)
+pip install cupy-cuda12x
+
+# Install PySpark (compatible with Spark 3.5.6 and Python 3.12)  
 pip install pyspark==3.5.0
 
 # Install XGBoost with GPU support
@@ -397,17 +496,17 @@ nano $SPARK_HOME/conf/spark-env.sh
 
 # Java and Spark paths
 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-export SPARK_HOME=/home/$(whoami)/spark
+export SPARK_HOME=/home/sanzad/spark
 
 # GPU Worker Configuration
 export SPARK_WORKER_CORES=8
 export SPARK_WORKER_MEMORY=16g
 export SPARK_WORKER_PORT=7078
 export SPARK_WORKER_WEBUI_PORT=8081
-export SPARK_WORKER_DIR=/home/$(whoami)/spark/work
+export SPARK_WORKER_DIR=/home/sanzad/spark/work
 
 # GPU Resource Discovery
-export SPARK_WORKER_RESOURCE_FILE=/home/$(whoami)/spark/conf/worker-resources.json
+export SPARK_WORKER_RESOURCE_FILE=/home/sanzad/spark/conf/worker-resources.json
 ```
 
 **🖥️ Machine: `gpu-node` (192.168.1.79)**  
@@ -423,7 +522,7 @@ nano $SPARK_HOME/conf/worker-resources.json
 {
   "gpu": {
     "amount": 1,
-    "discoveryScript": "/home/$(whoami)/spark/conf/gpu-discovery.sh"
+    "discoveryScript": "/home/sanzad/spark/conf/gpu-discovery.sh"
   }
 }
 ```
@@ -460,11 +559,11 @@ ssh spark@192.168.1.184
 # Generate or use existing SSH key (run on master)
 ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa  # Skip if key already exists
 
-# Copy public key to GPU node
-ssh-copy-id $(whoami)@192.168.1.79
+# Copy public key to GPU node (replace 'YOUR_GPU_USER' with the actual username on GPU node)
+ssh-copy-id sanzad@192.168.1.79
 
-# Test SSH connectivity
-ssh $(whoami)@192.168.1.79 "hostname"
+# Test SSH connectivity  
+ssh sanzad@192.168.1.79 "hostname"
 # Should return: gpu-node
 
 # Exit master node
@@ -489,7 +588,7 @@ ssh spark@192.168.1.184 "cat /home/spark/spark/conf/workers"
 # 192.168.1.79
 ```
 
-**Step 3: Copy cluster configuration to GPU node**
+**Step 3: Copy and configure cluster configuration**
 
 **🖥️ Machine: `gpu-node` (192.168.1.79)**  
 **👤 User: `$(whoami)` (your regular user)**  
@@ -504,6 +603,91 @@ scp spark@192.168.1.184:/home/spark/spark/conf/log4j2.properties $SPARK_HOME/con
 mkdir -p $SPARK_HOME/{logs,work,recovery,warehouse}
 ```
 
+**CRITICAL: Add GPU Resource Configuration to spark-defaults.conf**
+
+```bash
+# Edit spark-defaults.conf to add GPU resource configuration
+nano $SPARK_HOME/conf/spark-defaults.conf
+```
+
+**Add these lines to the end of spark-defaults.conf:**
+```properties
+# GPU Resource Configuration (REQUIRED for GPU detection)
+spark.worker.resource.gpu.amount                1
+spark.worker.resource.gpu.discoveryScript       /home/sanzad/spark/conf/gpu-discovery.sh
+
+# Enable GPU resource scheduling
+spark.resources.discoveryPlugin                 org.apache.spark.resource.ResourceDiscoveryScriptPlugin
+```
+
+⚠️ **IMPORTANT**: Replace `/home/sanzad/` with your actual username path!
+
+**CRITICAL: Add GPU Resource Configuration to Master's spark-defaults.conf**
+
+The master also needs GPU scheduling configuration:
+
+```bash
+# Add GPU scheduling configuration to master
+ssh spark@192.168.1.184 "echo 'spark.executor.resource.gpu.amount 1' >> /home/spark/spark/conf/spark-defaults.conf"
+ssh spark@192.168.1.184 "echo 'spark.task.resource.gpu.amount 0.1' >> /home/spark/spark/conf/spark-defaults.conf"
+ssh spark@192.168.1.184 "echo 'spark.scheduler.resource.profileMergeConflicts false' >> /home/spark/spark/conf/spark-defaults.conf"
+
+# Verify configuration
+ssh spark@192.168.1.184 "grep -E '(gpu|profileMergeConflicts)' /home/spark/spark/conf/spark-defaults.conf"
+
+# Restart master to pick up GPU configuration  
+ssh spark@192.168.1.184 "sudo systemctl restart spark-master"
+```
+
+**Expected output:**
+```
+spark.executor.resource.gpu.amount 1
+spark.task.resource.gpu.amount 0.1
+spark.scheduler.resource.profileMergeConflicts false
+```
+
+**CRITICAL: Synchronize All Integration JARs from Master**
+
+The GPU worker needs ALL integration JARs (not just Delta Lake) because it's a full cluster participant:
+
+```bash
+# Copy ALL integration JARs from master (where they should already exist)
+mkdir -p $SPARK_HOME/jars-ext
+
+# Copy all integration JARs from master
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/delta-spark_2.12-3.3.2.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/delta-storage-3.3.2.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/postgresql-42.7.2.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/kafka-clients-3.4.0.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/spark-sql-kafka-0-10_2.12-3.5.6.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/iceberg-spark-runtime-3.5_2.12-1.4.3.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/hadoop-aws-3.3.4.jar $SPARK_HOME/jars-ext/
+scp spark@192.168.1.184:/home/spark/spark/jars-ext/aws-java-sdk-bundle-1.12.367.jar $SPARK_HOME/jars-ext/
+
+# Install ALL JARs to runtime location
+cp $SPARK_HOME/jars-ext/*.jar $SPARK_HOME/jars/
+
+# Verify complete JAR installation
+echo "=== VERIFYING ALL INTEGRATION JARS ==="
+ls -la $SPARK_HOME/jars/delta-*.jar          # Delta Lake
+ls -la $SPARK_HOME/jars/postgresql*.jar      # PostgreSQL
+ls -la $SPARK_HOME/jars/kafka*.jar           # Kafka
+ls -la $SPARK_HOME/jars/iceberg*.jar         # Iceberg
+ls -la $SPARK_HOME/jars/hadoop-aws*.jar      # AWS S3
+ls -la $SPARK_HOME/jars/aws-java-sdk*.jar    # AWS SDK
+```
+
+**Add Delta Lake configuration to worker spark-defaults.conf:**
+
+```bash
+# Add Delta Lake configuration to GPU worker
+echo 'spark.sql.extensions io.delta.sql.DeltaSparkSessionExtension' >> $SPARK_HOME/conf/spark-defaults.conf
+echo 'spark.sql.catalog.spark_catalog org.apache.spark.sql.delta.catalog.DeltaCatalog' >> $SPARK_HOME/conf/spark-defaults.conf
+
+# Restart worker to pick up new JARs and configuration
+sudo systemctl restart spark-worker
+```
+
 **Step 4: Configure GPU worker systemd service**
 
 **🖥️ Machine: `gpu-node` (192.168.1.79)**  
@@ -514,6 +698,16 @@ mkdir -p $SPARK_HOME/{logs,work,recovery,warehouse}
 sudo nano /etc/systemd/system/spark-worker.service
 ```
 
+**⚠️ IMPORTANT**: Replace `YOUR_USERNAME` with your actual username (e.g., `sanzad`) **EVERYWHERE** in the file, including:
+- `User=YOUR_USERNAME` → `User=sanzad` 
+- `WorkingDirectory=/home/YOUR_USERNAME/spark` → `WorkingDirectory=/home/sanzad/spark`
+- `Environment=SPARK_HOME=/home/YOUR_USERNAME/spark` → `Environment=SPARK_HOME=/home/sanzad/spark`
+- `ExecStart=/home/YOUR_USERNAME/spark/sbin/...` → `ExecStart=/home/sanzad/spark/sbin/...`
+
+**DO NOT** use `$(whoami)` in systemd files as it won't be expanded.
+
+**🚨 CRITICAL**: The `Environment=SPARK_WORKER_RESOURCE_FILE` line is **REQUIRED** for GPU detection! Without it, you'll get "No custom resources configured" error even if all other files are correct.
+
 ```ini
 [Unit]
 Description=Apache Spark GPU Worker
@@ -522,14 +716,40 @@ Wants=network.target
 
 [Service]
 Type=forking
-User=$(whoami)
-Group=$(whoami)
-WorkingDirectory=/home/$(whoami)/spark
-Environment=SPARK_HOME=/home/$(whoami)/spark
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME/spark
+Environment=SPARK_HOME=/home/YOUR_USERNAME/spark
 Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 Environment=SPARK_LOCAL_IP=192.168.1.79
-ExecStart=/home/$(whoami)/spark/sbin/start-worker.sh --host 192.168.1.79 spark://192.168.1.184:7077
-ExecStop=/home/$(whoami)/spark/sbin/stop-worker.sh
+Environment=SPARK_WORKER_RESOURCE_FILE=/home/YOUR_USERNAME/spark/conf/worker-resources.json
+ExecStart=/home/YOUR_USERNAME/spark/sbin/start-worker.sh --host 192.168.1.79 spark://192.168.1.184:7077
+ExecStop=/home/YOUR_USERNAME/spark/sbin/stop-worker.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Example for user `sanzad`:**
+```ini
+[Unit]
+Description=Apache Spark GPU Worker
+After=network.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=sanzad
+Group=sanzad
+WorkingDirectory=/home/sanzad/spark
+Environment=SPARK_HOME=/home/sanzad/spark
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+Environment=SPARK_LOCAL_IP=192.168.1.79
+Environment=SPARK_WORKER_RESOURCE_FILE=/home/sanzad/spark/conf/worker-resources.json
+ExecStart=/home/sanzad/spark/sbin/start-worker.sh --host 192.168.1.79 spark://192.168.1.184:7077
+ExecStop=/home/sanzad/spark/sbin/stop-worker.sh
 Restart=always
 RestartSec=10
 
@@ -564,6 +784,101 @@ sudo systemctl start spark-worker
 
 # Check GPU worker status
 sudo systemctl status spark-worker
+
+# If it fails with "Failed to determine user credentials", fix the systemd file
+```
+
+### Troubleshooting Spark Worker Issues:
+
+**Problem: "Failed to determine user credentials" or status=217/USER**
+
+This happens when systemd can't expand shell variables. Fix by:
+
+```bash
+# Check service status
+sudo systemctl status spark-worker
+
+# If failed, edit service file with actual username (not $(whoami))
+sudo nano /etc/systemd/system/spark-worker.service
+
+# Reload and restart
+sudo systemctl daemon-reload
+sudo systemctl start spark-worker
+
+# Check logs for other issues
+journalctl -xeu spark-worker.service
+
+# Check worker logs
+tail -f /home/YOUR_USERNAME/spark/logs/spark-*-worker-*.out
+```
+
+**Problem: "No custom resources configured for spark.worker"**
+
+This means GPU resources aren't being detected. Fix by:
+
+```bash
+# 1. Ensure both worker-resources.json AND spark-defaults.conf are configured
+cat $SPARK_HOME/conf/worker-resources.json
+cat $SPARK_HOME/conf/spark-defaults.conf | grep gpu
+
+# 2. Check GPU discovery script works
+bash $SPARK_HOME/conf/gpu-discovery.sh
+# Should output: {"name": "gpu", "addresses": ["0"]}
+
+# 3. Add missing GPU configuration to spark-defaults.conf
+nano $SPARK_HOME/conf/spark-defaults.conf
+# Add the GPU resource properties shown above
+
+# 4. Restart worker and verify
+sudo systemctl restart spark-worker
+tail -10 /home/sanzad/spark/logs/spark-*-worker-*.out
+# Should show: "Custom resources for spark.worker: gpu -> [name: gpu, addresses: 0]"
+
+# 5. Verify in Web UI
+curl -s http://192.168.1.79:8081/json/ | jq '.resources'
+```
+
+**Problem: "No executor resource configs were specified for the following task configs: gpu"**
+
+This means master is missing GPU executor configuration:
+
+```bash
+# Add missing executor GPU configuration to master
+ssh spark@192.168.1.184 "echo 'spark.executor.resource.gpu.amount 1' >> /home/spark/spark/conf/spark-defaults.conf"
+ssh spark@192.168.1.184 "echo 'spark.scheduler.resource.profileMergeConflicts false' >> /home/spark/spark/conf/spark-defaults.conf"
+
+# Verify GPU configurations are present
+ssh spark@192.168.1.184 "grep -E '(gpu|profileMergeConflicts)' /home/spark/spark/conf/spark-defaults.conf"
+# Should show:
+# spark.task.resource.gpu.amount 0.1
+# spark.executor.resource.gpu.amount 1
+# spark.scheduler.resource.profileMergeConflicts false
+
+# Restart master
+ssh spark@192.168.1.184 "sudo systemctl restart spark-master"
+```
+
+**Problem: "ClassNotFoundException: io.delta.sql.DeltaSparkSessionExtension"**
+
+This means integration JARs are missing from the GPU worker:
+
+```bash
+# Check if JARs exist
+ls -la $SPARK_HOME/jars/delta-*.jar
+ls -la $SPARK_HOME/jars/postgresql*.jar
+ls -la $SPARK_HOME/jars/kafka*.jar
+
+# If missing, copy ALL integration JARs from master (see JAR synchronization section above)
+# DO NOT download individually - copy from master where they should already exist
+
+# Verify master has the JARs first
+ssh spark@192.168.1.184 "ls -la /home/spark/spark/jars-ext/"
+
+# If master is missing JARs, follow setup_guide/03_spark_cluster_setup.md Step 11 first
+# Then copy from master to GPU worker as documented above
+
+# Restart worker after copying JARs
+sudo systemctl restart spark-worker
 ```
 
 **🖥️ Machine: `cpu-node1` (192.168.1.184) - Spark Master**  
@@ -578,22 +893,9 @@ ssh spark@192.168.1.184 "sudo systemctl restart spark-master"
 ssh spark@192.168.1.184 "sudo systemctl status spark-master"
 ```
 
-**Step 7: Synchronize JAR files across cluster**
+**Step 7: Synchronize ALL JAR files from master (MOVED TO EARLIER SECTION)**
 
-**🖥️ Machine: `gpu-node` (192.168.1.79)**  
-**👤 User: `$(whoami)` (your regular user)**  
-**📁 Directory: `/home/$(whoami)/spark/jars`**
-
-```bash
-# Ensure all nodes have the same JAR files for consistency
-# Copy any additional JARs from existing workers to GPU node
-scp spark@192.168.1.187:/home/spark/spark/jars/postgresql*.jar $SPARK_HOME/jars/ 2>/dev/null || true
-scp spark@192.168.1.187:/home/spark/spark/jars/delta*.jar $SPARK_HOME/jars/ 2>/dev/null || true
-scp spark@192.168.1.187:/home/spark/spark/jars/kafka*.jar $SPARK_HOME/jars/ 2>/dev/null || true
-
-# Or copy GPU node's JARs to existing workers if they need GPU libraries
-# scp $SPARK_HOME/jars-ext/rapids*.jar spark@192.168.1.187:/home/spark/spark/jars/
-```
+⚠️ **NOTE**: JAR synchronization is now handled in the "CRITICAL: Synchronize All Integration JARs from Master" section above to avoid redundancy.
 
 **Step 8: Verify cluster integration**
 
@@ -621,7 +923,75 @@ ssh spark@192.168.1.184 '/home/spark/spark/bin/spark-shell --master spark://192.
 **Expected Result:**
 - Master Web UI shows **3 workers**: 192.168.1.187, 192.168.1.190, 192.168.1.79
 - GPU worker shows **GPU resources available**
+- Worker logs show: `Custom resources for spark.worker: gpu -> [name: gpu, addresses: 0]`
+- GPU worker Web UI: `http://192.168.1.79:8081/json/` shows GPU in resources section
 - Applications can now schedule GPU-accelerated tasks on 192.168.1.79
+
+**Verification Commands:**
+```bash
+# Check GPU worker Web UI
+curl -s http://192.168.1.79:8081/json/ | jq '.resources'
+# Should show: {"gpu": {"addresses": ["0"]}}
+
+# Check worker logs for GPU detection
+tail -20 /home/sanzad/spark/logs/spark-sanzad-org.apache.spark.deploy.worker.Worker-1-gpu-node.out | grep -i gpu
+
+# Check master shows GPU worker
+curl -s http://192.168.1.184:8080/json/ | jq '.workers[] | select(.host=="192.168.1.79") | .resources'
+```
+
+**Test Spark Cluster Integration:**
+
+```bash
+# Test Spark shell connection
+ssh spark@192.168.1.184 '/home/spark/spark/bin/spark-shell --master spark://192.168.1.184:7077'
+
+# In Spark shell, run these verification commands:
+sc.getConf.get("spark.master")  // Should show: spark://192.168.1.184:7077
+sc.statusTracker.getExecutorInfos.length  // Should show number of executors
+sc.resources  // Should show available driver resources (may be empty)
+
+# Test RDD distribution across workers
+val rdd = sc.parallelize(1 to 100, 10)
+println(s"RDD partitions: ${rdd.getNumPartitions}")
+rdd.glom().mapPartitions(iter => Array(java.net.InetAddress.getLocalHost.getHostName).iterator).collect()
+
+# Exit
+:quit
+```
+
+**Expected Results:**
+- Should connect to all 3 workers (192.168.1.187, 192.168.1.190, 192.168.1.79)
+- RDD operations should distribute across worker nodes  
+- Last command shows which hosts are processing partitions
+
+**Test GPU Resource Scheduling:**
+
+```bash
+# Test Spark shell WITH GPU resource requirements
+ssh spark@192.168.1.184 '/home/spark/spark/bin/spark-shell --master spark://192.168.1.184:7077 --conf spark.executor.resource.gpu.amount=1 --conf spark.task.resource.gpu.amount=0.1'
+
+# Should start successfully with these indicators:
+# 1. Optimization warning (NORMAL): 
+#    WARN ResourceUtils: The configuration of resource: gpu (exec = 1, task = 0.1/10, runnable tasks = 10)
+# 2. NO Delta Lake ClassNotFoundException warnings (if JARs installed correctly)
+# 3. Application gets assigned ID (e.g., app-20251005201320-0001)
+
+# In shell, test operations:
+sc.getConf.get("spark.master")
+sc.parallelize(1 to 100).collect()
+
+# Test Delta Lake if JARs installed:
+import io.delta.tables._
+:quit
+```
+
+**Success Indicators:**
+- ✅ Spark shell starts without "No executor resource configs" error
+- ✅ Applications get assigned app IDs (e.g., app-20251005201320-0001)  
+- ✅ Basic operations work (parallelize/collect)
+- ✅ NO Delta Lake ClassNotFoundException (if JARs installed)
+- ⚠️ GPU/CPU resource optimization warning (this is normal - not an error)
 
 ### Option B: Client-Only Setup (No GPU MLlib Acceleration)
 
@@ -1410,7 +1780,7 @@ async def load_models():
     """Load models on startup"""
     try:
         # Load TensorFlow model
-        tf_model_path = "/home/$(whoami)/models/recommendation_tf"
+        tf_model_path = "/home/sanzad/models/recommendation_tf"
         if os.path.exists(tf_model_path):
             models['recommendation_tf'] = tf.keras.models.load_model(tf_model_path)
             logger.info("Loaded TensorFlow recommendation model")
@@ -1654,12 +2024,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=$(whoami)
-Group=$(whoami)
-WorkingDirectory=/home/$(whoami)
-Environment=PATH=/home/$(whoami)/ml-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+User=sanzad
+Group=sanzad
+WorkingDirectory=/home/sanzad
+Environment=PATH=/home/sanzad/ml-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=CUDA_VISIBLE_DEVICES=0
-ExecStart=/home/$(whoami)/ml-env/bin/jupyter lab --config=/home/$(whoami)/.jupyter/jupyter_lab_config.py
+ExecStart=/home/sanzad/ml-env/bin/jupyter lab --config=/home/sanzad/.jupyter/jupyter_lab_config.py
 Restart=always
 RestartSec=10
 
@@ -1679,11 +2049,11 @@ After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=$(whoami)
-Group=$(whoami)
-WorkingDirectory=/home/$(whoami)
-Environment=PATH=/home/$(whoami)/ml-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/home/$(whoami)/ml-env/bin/mlflow server --backend-store-uri postgresql://dataeng:password@192.168.1.184:5432/mlflow_db --default-artifact-root file:///home/$(whoami)/mlflow/artifacts --host 0.0.0.0 --port 5000
+User=sanzad
+Group=sanzad
+WorkingDirectory=/home/sanzad
+Environment=PATH=/home/sanzad/ml-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/sanzad/ml-env/bin/mlflow server --backend-store-uri postgresql://dataeng:password@192.168.1.184:5432/mlflow_db --default-artifact-root file:///home/sanzad/mlflow/artifacts --host 0.0.0.0 --port 5000
 Restart=always
 RestartSec=10
 
@@ -1813,3 +2183,90 @@ mokutil --sb-state
 5. **Only install CUDA toolkit if needed**: For `nvcc` compiler or development tools
 
 This comprehensive GPU ML setup provides a powerful platform for training and serving machine learning models while integrating seamlessly with your existing data engineering infrastructure!
+
+## 🚀 **Complete Setup Verification**
+
+**Run these commands to verify your entire setup is working correctly:**
+
+### **1. Verify GPU and Drivers**
+```bash
+# GPU driver check
+nvidia-smi
+# Should show: GPU details, driver version (e.g., 535.247.01), CUDA version (e.g., 12.2)
+
+# GPU discovery script check
+bash $SPARK_HOME/conf/gpu-discovery.sh
+# Should output: {"name": "gpu", "addresses": ["0"]}
+```
+
+### **2. Verify Python ML Environment**
+```bash
+# Activate ML environment
+source ml-env/bin/activate
+
+# Test TensorFlow GPU
+python -c "import tensorflow as tf; print(f'TensorFlow: {tf.__version__}'); print(f'GPUs: {len(tf.config.list_physical_devices(\"GPU\"))}')"
+# Should show: TensorFlow version >=2.16.1, GPUs: 1
+
+# Test PyTorch GPU  
+python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
+# Should show: PyTorch version, CUDA available: True
+```
+
+### **3. Verify Spark GPU Integration**
+```bash
+# Check worker service status
+sudo systemctl status spark-worker
+# Should show: active (running)
+
+# Check GPU resources detected by worker
+curl -s http://192.168.1.79:8081/json/ | jq '.resources'
+# Should show: {"gpu": {"amount": 1, "addresses": ["0"]}}
+
+# Check worker logs for GPU detection
+tail -5 /home/sanzad/spark/logs/spark-*-worker-*.out | grep -i gpu
+# Should show: "Custom resources for spark.worker: gpu -> [name: gpu, addresses: 0]"
+```
+
+### **4. Verify Complete Spark GPU Cluster**
+```bash
+# Test GPU-enabled Spark application
+ssh spark@192.168.1.184 '/home/spark/spark/bin/spark-shell --master spark://192.168.1.184:7077 --conf spark.executor.resource.gpu.amount=1 --conf spark.task.resource.gpu.amount=0.1'
+
+# In Spark shell, run verification:
+# ✅ Should start without "No executor resource configs" error
+# ✅ Should show GPU optimization warning (normal behavior)
+# ✅ Should NOT show Delta Lake ClassNotFoundException (if JARs installed)
+
+# Test basic operations:
+sc.getConf.get("spark.master")  // Should return: spark://192.168.1.184:7077
+sc.parallelize(1 to 100).count  // Should return: 100
+
+# Test Delta Lake (if installed):
+import io.delta.tables._  // Should import without errors
+
+:quit
+```
+
+### **5. Verify Services and Access**
+```bash
+# Check all services running
+sudo systemctl status spark-worker jupyter-gpu mlflow-gpu
+
+# Test web interfaces (open in browser):
+# - Spark Worker UI: http://192.168.1.79:8081
+# - Jupyter Lab: http://192.168.1.79:8888  
+# - MLflow UI: http://192.168.1.79:5000
+```
+
+### **🎯 Success Checklist**
+- ✅ `nvidia-smi` shows GPU and driver working
+- ✅ TensorFlow detects GPU (`GPUs: 1`)
+- ✅ PyTorch has CUDA available (`True`)
+- ✅ Spark worker shows GPU resources in web UI
+- ✅ Spark applications can request GPU resources without errors
+- ✅ Delta Lake imports work (no ClassNotFoundException)
+- ✅ All services (worker, jupyter, mlflow) are running
+- ✅ Web UIs are accessible
+
+**If any step fails, check the troubleshooting section above for specific fixes!**
