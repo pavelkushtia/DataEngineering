@@ -1125,20 +1125,17 @@ def test_spark_ml():
     
     # Show executors (should display worker nodes 187, 190)
     status = spark.sparkContext.statusTracker()
-    executor_infos_by_host = status.getExecutorInfosByHost()
-    all_executors = []
-    for host, executors in executor_infos_by_host.items():
-        all_executors.extend(executors)
+    executor_infos = status.getExecutorInfos()  # CORRECT PySpark API method
     
-    print(f"Active executors: {len(all_executors)}")
-    for executor in all_executors:
+    print(f"Active executors: {len(executor_infos)}")
+    for executor in executor_infos:
         print(f"  Executor {executor.executorId}: {executor.host}")
     
     print("=== Spark MLlib Test ===")
     
     # Show cluster composition (CPU vs GPU workers)
     print(f"\n=== Cluster Worker Analysis ===")
-    for executor in all_executors:
+    for executor in executor_infos:
         if executor.host == "192.168.1.79":
             print(f"  ✅ GPU Worker: {executor.host} (RTX 2060 Super)")
         else:
