@@ -1123,23 +1123,44 @@ def test_spark_ml():
     print(f"Connected to: {spark.sparkContext.master}")
     print(f"Default parallelism: {spark.sparkContext.defaultParallelism}")
     
-    # Show executors (should display worker nodes 187, 190)
-    status = spark.sparkContext.statusTracker()
-    executor_infos = status.getExecutorInfos()  # CORRECT PySpark API method
+    # Show executors using Spark REST API (PySpark StatusTracker doesn't have getExecutorInfos)
+    import requests
+    import json
     
-    print(f"Active executors: {len(executor_infos)}")
-    for executor in executor_infos:
-        print(f"  Executor {executor.executorId}: {executor.host}")
-    
-    print("=== Spark MLlib Test ===")
-    
-    # Show cluster composition (CPU vs GPU workers)
-    print(f"\n=== Cluster Worker Analysis ===")
-    for executor in executor_infos:
-        if executor.host == "192.168.1.79":
-            print(f"  ✅ GPU Worker: {executor.host} (RTX 2060 Super)")
-        else:
-            print(f"  ⚠️  CPU Worker: {executor.host} (No GPU)")
+    try:
+        # Get executor info via Spark REST API
+        app_id = spark.sparkContext.applicationId
+        rest_url = f"http://192.168.1.184:4040/api/v1/applications/{app_id}/executors"
+        
+        response = requests.get(rest_url, timeout=5)
+        executors_data = response.json()
+        
+        print(f"Active executors: {len(executors_data)}")
+        for executor in executors_data:
+            host = executor['hostPort'].split(':')[0]  # Remove port number
+            print(f"  Executor {executor['id']}: {host}")
+        
+        print("=== Spark MLlib Test ===")
+        
+        # Show cluster composition (CPU vs GPU workers)
+        print(f"\n=== Cluster Worker Analysis ===")
+        for executor in executors_data:
+            host = executor['hostPort'].split(':')[0]
+            if host == "192.168.1.79":
+                print(f"  ✅ GPU Worker: {host} (RTX 2060 Super)")
+            else:
+                print(f"  ⚠️  CPU Worker: {host} (No GPU)")
+                
+    except Exception as e:
+        print(f"Could not get executor info via REST API: {e}")
+        print("Continuing with basic cluster test...")
+        
+        # Fallback to basic info
+        status = spark.sparkContext.statusTracker()
+        app_info = status.getApplicationInfo()
+        print(f"Application ID: {app_info.appId}")
+        print(f"Application Name: {app_info.name}")
+        print("=== Spark MLlib Test ===")
     
     # Generate larger dataset to benefit from GPU acceleration
     print(f"\n=== Testing GPU-Accelerated MLlib ===")
@@ -1348,6 +1369,93 @@ jupyter lab \
 Make it executable:
 ```bash
 chmod +x start_jupyter.sh
+```
+
+### Test Jupyter Lab Setup:
+
+```bash
+# Test 1: Start Jupyter Lab manually to check for errors
+source ml-env/bin/activate
+jupyter lab --generate-config  # Ensure config exists
+
+# Test 2: Run Jupyter Lab in foreground (Ctrl+C to stop)
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+
+# Should see output like:
+# [I 2025-10-05 22:00:00.000 ServerApp] Serving at http://0.0.0.0:8888/lab
+# [I 2025-10-05 22:00:00.000 ServerApp] Use Control-C to stop this server
+```
+
+**If successful, stop with Ctrl+C and test systemd service:**
+
+```bash
+# Test 3: Start as systemd service  
+sudo systemctl start jupyter-gpu
+sudo systemctl status jupyter-gpu
+
+# Should show: active (running)
+```
+
+**Test 4: Access Jupyter Lab Web Interface:**
+
+Open browser and navigate to: **http://192.168.1.79:8888**
+
+Expected results:
+- ✅ Jupyter Lab interface loads
+- ✅ Can create new notebook
+- ✅ Python kernel starts successfully
+- ✅ GPU extensions visible (nvdashboard, resource usage)
+
+**Test 5: Create test notebook to verify GPU detection:**
+
+Create new notebook and run:
+```python
+# Test GPU detection in Jupyter
+import torch
+import tensorflow as tf
+
+print("=== GPU Detection Test ===")
+print(f"PyTorch CUDA available: {torch.cuda.is_available()}")
+print(f"TensorFlow GPUs: {len(tf.config.list_physical_devices('GPU'))}")
+
+# Test NVIDIA monitoring
+import pynvml
+pynvml.nvmlInit()
+gpu_count = pynvml.nvmlDeviceGetCount()
+print(f"NVIDIA GPUs detected: {gpu_count}")
+
+if gpu_count > 0:
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+    name = pynvml.nvmlDeviceGetName(handle)
+    print(f"GPU 0: {name}")
+```
+
+**Test 6: Verify Extensions:**
+- **GPU Dashboard**: Look for "GPU Dashboards" in left sidebar
+- **Resource Monitor**: Look for CPU/Memory usage in top bar  
+- **Git Extension**: Look for Git tab in left sidebar
+
+**Troubleshooting Common Issues:**
+
+```bash
+# Issue 1: "Address already in use"
+sudo lsof -i :8888
+sudo kill -9 <PID>
+
+# Issue 2: Permission denied
+sudo chown -R sanzad:sanzad ~/.jupyter/
+chmod 644 ~/.jupyter/jupyter_lab_config.py
+
+# Issue 3: Extension not loading
+jupyter lab build --minimize=False
+jupyter lab clean
+jupyter lab build
+
+# Issue 4: Kernel not found
+python -m ipykernel install --user --name ml-env --display-name "ML Environment"
+
+# Check logs if service fails
+journalctl -xeu jupyter-gpu.service -f
 ```
 
 ## Step 7: MLflow Setup for Experiment Tracking
