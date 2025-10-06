@@ -948,7 +948,7 @@ ssh spark@192.168.1.184 '/home/spark/spark/bin/spark-shell --master spark://192.
 
 # In Spark shell, run these verification commands:
 sc.getConf.get("spark.master")  // Should show: spark://192.168.1.184:7077
-sc.statusTracker.getExecutorInfos.length  // Should show number of executors
+sc.statusTracker.getExecutorInfos().length  // Should show number of executors
 sc.resources  // Should show available driver resources (may be empty)
 
 # Test RDD distribution across workers
@@ -1125,16 +1125,20 @@ def test_spark_ml():
     
     # Show executors (should display worker nodes 187, 190)
     status = spark.sparkContext.statusTracker()
-    executors = status.getExecutorInfos()
-    print(f"Active executors: {len(executors)}")
-    for executor in executors:
+    executor_infos_by_host = status.getExecutorInfosByHost()
+    all_executors = []
+    for host, executors in executor_infos_by_host.items():
+        all_executors.extend(executors)
+    
+    print(f"Active executors: {len(all_executors)}")
+    for executor in all_executors:
         print(f"  Executor {executor.executorId}: {executor.host}")
     
     print("=== Spark MLlib Test ===")
     
     # Show cluster composition (CPU vs GPU workers)
     print(f"\n=== Cluster Worker Analysis ===")
-    for executor in executors:
+    for executor in all_executors:
         if executor.host == "192.168.1.79":
             print(f"  ✅ GPU Worker: {executor.host} (RTX 2060 Super)")
         else:
@@ -1275,15 +1279,21 @@ python test_spark_cluster_ml.py
 # Activate ML environment
 source ml-env/bin/activate
 
-# Install JupyterLab with extensions
-pip install jupyterlab
+# Install JupyterLab with extensions (JupyterLab 4.x for better GPU support)
+pip install 'jupyterlab>=4.0'
 pip install jupyterlab-git jupyterlab-github
 pip install ipywidgets widgetsnbextension
 pip install jupyter-dash
 
-# Install GPU monitoring extensions
-pip install jupyterlab-system-monitor
-pip install jupyterlab-nvdashboard
+# Install monitoring extensions (compatible with JupyterLab 4.x)
+pip install jupyter-resource-usage  # System monitoring (replaces jupyterlab-system-monitor)
+pip install jupyterlab-nvdashboard   # GPU monitoring (requires JupyterLab 4.x)
+
+# ⚠️ DEPENDENCY CONFLICT FIX (if needed)
+# If you see "jupyterlab 3.6.8 which is incompatible" errors:
+# pip uninstall -y jupyterlab-system-monitor jupyterlab-topbar
+# pip install 'jupyterlab>=4.0' --force-reinstall
+# pip install jupyter-resource-usage
 
 # Generate Jupyter config
 jupyter lab --generate-config
